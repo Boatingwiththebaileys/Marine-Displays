@@ -2,12 +2,12 @@ Boating with the Baileys
 Jan 2026
 
 ESP32 customisable display using data from SignalK. It features:
- Customisable background images,
- Custom icons, 
- Alerting through icon colours and built in buzzer
- Global or Per Screen buzzer
- WebUI driven
- Touch and non Touch options
+Customisable background images,
+Custom icons, 
+Alerting through icon colours and built in buzzer
+Global or Per Screen buzzer
+WebUI driven
+Touch and non Touch options
 
 ESP32-S3 2.8" IPS LCD Round Display
 
@@ -35,3 +35,26 @@ Save them on the sd card in a folder called /assests
 Video coming soon of the whole feature set and setup.
 
 The Baileys
+
+
+
+
+
+
+How to convert PNG backgrounds
+------------------------------
+
+This project uses raw RGB565 `.bin` background files on the SD card. The workflow we used is:
+
+- Convert `*.png` to RGB565 `.bin` using `convert_png_to_rgb565.py` (or run `batch_convert.sh` which calls it for the assets).
+- Copy the produced `.bin` files to the SD card `assets/` folder on the display.
+
+Example (from project root):
+
+```bash
+# convert a single PNG to a .bin
+python3 convert_png_to_rgb565.py assets/Rev_Counter.png assets/Rev_Counter.bin
+
+# or run the batch helper (installs Pillow if needed)
+./batch_convert.sh
+```
