@@ -1,13 +1,16 @@
 Boating with the Baileys
 Jan 2026
 
-ESP32 customisable display using data from SignalK. It features:
-Customisable background images,
-Custom icons, 
-Alerting through icon colours and built in buzzer
-Global or Per Screen buzzer
-WebUI driven
-Touch and non Touch options
+ESP32 customisable display using data from SignalK. 
+------------------------------
+
+It features:
+- Customisable background images,
+- Custom icons, 
+- Alerting through icon colours and built in buzzer
+- Global or Per Screen buzzer
+- WebUI driven
+- Touch and non Touch options
 
 ESP32-S3 2.8" IPS LCD Round Display
 
