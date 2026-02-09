@@ -16,6 +16,8 @@ Both displays will connect via WiFi useing Websocket and subscribe to the data p
 
 Its all avilable for free here, try it, test, tell me what works.
 
+IMG_2602.jpg
+
 Videos and more coming soon.
 
 The Baileys
