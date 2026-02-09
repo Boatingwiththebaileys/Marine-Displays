@@ -16,7 +16,7 @@ Both displays will connect via WiFi useing Websocket and subscribe to the data p
 
 Its all avilable for free here, try it, test, tell me what works.
 
-IMG_2602.jpg
+[IMG_2602.jpg](https://github.com/Boatingwiththebaileys/Marine-Displays/blob/b56cb05db780b8a2692e31b83edfad973bb852f3/IMG_2602.jpg)
 
 Videos and more coming soon.
 
