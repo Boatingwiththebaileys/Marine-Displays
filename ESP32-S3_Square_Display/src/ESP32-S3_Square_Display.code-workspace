@@ -1,0 +1,21 @@
+{
+	"folders": [
+		{
+			"name": "ESP32-S3_Square_Display",
+			"path": ".."
+		},
+		{
+			"path": "../../../../../Downloads/ESP32-S3-Touch-LCD-4_democode_V2"
+		}
+	],
+	"settings": {
+		"chat.tools.terminal.autoApprove": {
+			"set": true,
+			"break": true,
+			"exit": true,
+			"mv": true,
+			"~/.platformio/penv/bin/pio": true,
+			"true": true
+		}
+	}
+}
