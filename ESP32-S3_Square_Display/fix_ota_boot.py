@@ -13,11 +13,21 @@ def after_upload(source, target, env):
     if not os.path.isfile(boot_app0):
         print("fix_ota_boot: boot_app0.bin not found at", boot_app0)
         return
+
+    # Use PlatformIO's bundled esptool package so it works even when the
+    # system Python doesn't have esptool installed.
+    esptool_dir = env.PioPlatform().get_package_dir("tool-esptoolpy") or ""
+    esptool_py  = os.path.join(esptool_dir, "esptool.py")
+    if os.path.isfile(esptool_py):
+        esptool_cmd = '"' + env.subst("$PYTHONEXE") + '" "' + esptool_py + '"'
+    else:
+        # Fallback: try the module path (works inside PlatformIO's venv)
+        esptool_cmd = '"' + env.subst("$PYTHONEXE") + '" -m esptool'
+
     print("fix_ota_boot: writing boot_app0.bin to 0x29000 ...")
     env.Execute(
         " ".join([
-            '"' + env.subst("$PYTHONEXE") + '"',
-            "-m", "esptool",
+            esptool_cmd,
             "--chip", "esp32s3",
             "--port", '"' + env.subst("$UPLOAD_PORT") + '"',
             "--baud", env.subst("$UPLOAD_SPEED"),
