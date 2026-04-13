@@ -1,0 +1,16 @@
+{
+	"folders": [
+		{
+			"name": "ESP32-S3_Square_Display",
+			"path": ".."
+		}
+	],
+	"settings": {
+		"chat.tools.terminal.autoApprove": {
+			"/^python3 /tmp/iram_breakdown\\.py$/": {
+				"approve": true,
+				"matchCommandLine": true
+			}
+		}
+	}
+}
