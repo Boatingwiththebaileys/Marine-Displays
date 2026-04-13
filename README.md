@@ -10,11 +10,13 @@ https://www.waveshare.com/esp32-s3-touch-lcd-4.htm
 
 The round display, i'm focusing more on it following a gauge-type idea, listening to SignalK paths and creating a smart display, for different engine information, battery, wind etc.
 
-For the square display, the first set of code will build on the round display, with more options for things like number diplays, graphs and meta data pulled in from SK. I will also look at NMEA2000 if there is demand for this.
+For the square display, the first set of code will build on the round display, with more options for things like number diplays, graphs and meta data pulled in from SK. 
 
 Both displays will connect via WiFi useing Websocket and subscribe to the data paths for instant updates of values coming in.
 
-Its all avilable for free here, try it, test, tell me what works.
+There is a NMEA2000 version now of the square display; more on this soon.
+
+It's all available for free here, try it, test, tell me what works.
 
 ![IMG_2602.jpg](https://github.com/Boatingwiththebaileys/Marine-Displays/blob/b56cb05db780b8a2692e31b83edfad973bb852f3/IMG_2602.jpg)
 
