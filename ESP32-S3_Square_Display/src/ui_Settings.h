@@ -31,6 +31,7 @@ void update_ip_address(void);
 void trigger_buzzer_alert(void);
 void night_mode_init_overlays(void);
 void set_brightness_level(uint8_t level);
+void brightness_nvs_flush(void);
 
 #ifdef __cplusplus
 }

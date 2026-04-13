@@ -9,15 +9,19 @@
 
 // Board version detection from TCA9554PWR driver
 extern bool is_board_v4();
+// Shadow registers — CH32V003 register reads are unreliable after any write
+extern uint8_t ch32v003_get_dir_shadow();
+extern uint8_t ch32v003_get_out_shadow();
 
 #define I2C_TIMEOUT_MS (10)
 #define IO_COUNT (8)
-#define INPUT_REG_ADDR (0x00)
-// OUTPUT and DIRECTION register addresses differ between TCA9554 (V3) and CH32V003 (V4)
-// TCA9554: OUTPUT=0x01, DIR=0x03, dir polarity: 0=output,1=input
-// CH32V003: OUTPUT=0x02, DIR=0x03, dir polarity: 1=output,0=input (INVERTED)
-static uint8_t output_reg_addr() { return is_board_v4() ? 0x02 : 0x01; }
-#define DIRECTION_REG_ADDR (0x03)
+// Register addresses differ between TCA9554 (V3) and CH32V003 (V4).
+// Verified from Waveshare official custom_io_expander_ch32v003 driver.
+// TCA9554: INPUT=0x00, OUTPUT=0x01, DIR=0x03, dir polarity: 0=output,1=input
+// CH32V003: DIR=0x02, OUTPUT=0x03, INPUT=0x04, dir polarity: 1=output,0=input
+static uint8_t input_reg_addr()     { return is_board_v4() ? 0x04 : 0x00; }
+static uint8_t output_reg_addr()    { return is_board_v4() ? 0x03 : 0x01; }
+static uint8_t direction_reg_addr() { return is_board_v4() ? 0x02 : 0x03; }
 #define DIR_REG_DEFAULT_VAL (0xff)
 #define OUT_REG_DEFAULT_VAL (0xff)
 
@@ -86,7 +90,7 @@ static esp_err_t read_input_reg(esp_io_expander_handle_t handle, uint32_t *value
     esp_io_expander_tca9554_t *tca = (esp_io_expander_tca9554_t *)__containerof(handle, esp_io_expander_tca9554_t, base);
 
     Wire.beginTransmission((uint8_t)tca->i2c_address);
-    Wire.write(INPUT_REG_ADDR);
+    Wire.write(input_reg_addr());
     if (Wire.endTransmission() != 0) {
         ESP_LOGE(TAG, "Read input reg: endTransmission failed");
         return ESP_FAIL;
@@ -130,7 +134,7 @@ static esp_err_t write_direction_reg(esp_io_expander_handle_t handle, uint32_t v
     value &= 0xff;
 
     Wire.beginTransmission((uint8_t)tca->i2c_address);
-    Wire.write(DIRECTION_REG_ADDR);
+    Wire.write(direction_reg_addr());
     Wire.write((uint8_t)value);
     if (Wire.endTransmission() != 0) {
         ESP_LOGE(TAG, "Write direction reg failed");
@@ -157,9 +161,19 @@ static esp_err_t reset(esp_io_expander_t *handle)
     // causing an audible glitch on every boot.
     esp_io_expander_tca9554_t *tca = (esp_io_expander_tca9554_t *)__containerof(handle, esp_io_expander_tca9554_t, base);
 
-    // Read direction register
+    // V4 CH32V003: register reads are unreliable after any write (returns
+    // stale data from other registers).  Use shadow registers maintained
+    // by TCA9554PWR driver instead of reading hardware.
+    if (is_board_v4()) {
+        tca->regs.direction = ch32v003_get_dir_shadow();
+        tca->regs.output    = ch32v003_get_out_shadow();
+        ESP_LOGI(TAG, "Reset: V4 using shadow dir=0x%02x out=0x%02x", tca->regs.direction, tca->regs.output);
+        return ESP_OK;
+    }
+
+    // V3 TCA9554: read direction register
     Wire.beginTransmission((uint8_t)tca->i2c_address);
-    Wire.write(DIRECTION_REG_ADDR);
+    Wire.write(direction_reg_addr());
     if (Wire.endTransmission() != 0 || Wire.requestFrom((uint8_t)tca->i2c_address, (uint8_t)1) < 1) {
         ESP_LOGW(TAG, "Reset: failed to read direction reg, using defaults");
         tca->regs.direction = DIR_REG_DEFAULT_VAL;
@@ -168,7 +182,7 @@ static esp_err_t reset(esp_io_expander_t *handle)
     }
     tca->regs.direction = (uint8_t)Wire.read();
 
-    // Read output register (0x01 on TCA9554, 0x02 on CH32V003)
+    // V3 TCA9554: read output register
     Wire.beginTransmission((uint8_t)tca->i2c_address);
     Wire.write(output_reg_addr());
     if (Wire.endTransmission() != 0 || Wire.requestFrom((uint8_t)tca->i2c_address, (uint8_t)1) < 1) {

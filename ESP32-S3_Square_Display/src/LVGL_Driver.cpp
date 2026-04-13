@@ -228,6 +228,7 @@ void Lvgl_Touchpad_Read( lv_indev_drv_t * indev_drv, lv_indev_data_t * data )
   uint8_t touchpad_cnt = 0;
   Touch_Read_Data();
   uint8_t touchpad_pressed = Touch_Get_XY(touchpad_x, touchpad_y, strength, &touchpad_cnt, GT911_LCD_TOUCH_MAX_POINTS);
+
   if (touchpad_pressed && touchpad_cnt > 0) {
     // Always update activity timestamp on any touch
     g_last_activity_ms = millis();

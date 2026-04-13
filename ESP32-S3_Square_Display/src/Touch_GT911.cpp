@@ -50,9 +50,113 @@ bool I2C_Write_Touch(uint8_t Driver_addr, uint16_t Reg_addr, const uint8_t *Reg_
   return true;
 }
 
+// Upload GT911 configuration for 480x480 touch panel.
+// The GT911 on this board has no factory config in flash — all registers read 0.
+// This writes a minimal config at every boot so touch works.
+static bool GT911_Upload_Config(void) {
+    // 184 bytes: registers 0x8047 through 0x80FE
+    uint8_t cfg[184];
+    memset(cfg, 0, sizeof(cfg));
+
+    // Offset  Register  Description
+    cfg[0]  = 0x60;  // 0x8047  Config_Version (must be > 0)
+    cfg[1]  = 0xE0;  // 0x8048  X_Output_Max low  (480 = 0x01E0)
+    cfg[2]  = 0x01;  // 0x8049  X_Output_Max high
+    cfg[3]  = 0xE0;  // 0x804A  Y_Output_Max low  (480 = 0x01E0)
+    cfg[4]  = 0x01;  // 0x804B  Y_Output_Max high
+    cfg[5]  = 0x05;  // 0x804C  Touch_Number (5 simultaneous points)
+    cfg[6]  = 0x05;  // 0x804D  Module_Switch1
+                     //   bits 0-1 = 01 (falling edge INT — pulse LOW when data ready)
+                     //   bit 2    = 1  (sito: small touch area enable)
+                     //   bit 3    = 0  (no X2Y swap)
+    cfg[7]  = 0x00;  // 0x804E  Module_Switch2
+    cfg[8]  = 0x02;  // 0x804F  Shake_Count (debounce)
+    cfg[9]  = 0x08;  // 0x8050  Filter
+    cfg[10] = 0x00;  // 0x8051  Large_Touch
+    cfg[11] = 0x0F;  // 0x8052  Noise_Reduction
+    cfg[12] = 0x28;  // 0x8053  Screen_Touch_Level (40 — touch threshold)
+    cfg[13] = 0x1E;  // 0x8054  Screen_Leave_Level (30 — release threshold)
+    cfg[14] = 0x03;  // 0x8055  Low_Power_Control
+    cfg[15] = 0x05;  // 0x8056  Refresh_Rate (period = 5 + val = 10ms → 100Hz)
+    cfg[16] = 0x00;  // 0x8057  X_Threshold
+    cfg[17] = 0x00;  // 0x8058  Y_Threshold
+    // [18..183] = 0 — GT911 uses auto-detect for driver/sensor channels
+
+    // Checksum: two's complement of sum of all 184 config bytes
+    uint8_t sum = 0;
+    for (int i = 0; i < 184; i++) sum += cfg[i];
+    uint8_t checksum = (~sum) + 1;
+
+    // Write config in 32-byte chunks (safe for all Wire buffer sizes)
+    bool ok = true;
+    for (int off = 0; off < 184 && ok; off += 32) {
+        int len = ((184 - off) < 32) ? (184 - off) : 32;
+        if (!I2C_Write_Touch(gt911_addr, (uint16_t)(0x8047 + off),
+                             cfg + off, (uint32_t)len)) {
+            printf("[TOUCH] Config write failed at offset %d\n", off);
+            ok = false;
+        }
+    }
+    if (!ok) return false;
+
+    // Write checksum to 0x80FF
+    if (!I2C_Write_Touch(gt911_addr, 0x80FF, &checksum, 1)) {
+        printf("[TOUCH] Checksum write failed\n");
+        return false;
+    }
+
+    // Write config_fresh flag (0x01) to 0x8100 — tells GT911 to apply config
+    uint8_t fresh = 0x01;
+    if (!I2C_Write_Touch(gt911_addr, 0x8100, &fresh, 1)) {
+        printf("[TOUCH] Config fresh flag write failed\n");
+        return false;
+    }
+
+    vTaskDelay(pdMS_TO_TICKS(100)); // Let GT911 process the new config
+
+    // No software reset — the fresh flag (0x01 at 0x8100) is sufficient
+    // to make GT911 apply the new config.  Sending 0x02 to 0x8040 causes
+    // the GT911 to hang (command register stays stuck at 0x02) and can
+    // invalidate subsequent config/interrupt settings.
+
+    // Verify
+    uint8_t vfy[6];
+    if (I2C_Read_Touch(gt911_addr, 0x8047, vfy, 6)) {
+        uint16_t xm = vfy[1] | ((uint16_t)vfy[2] << 8);
+        uint16_t ym = vfy[3] | ((uint16_t)vfy[4] << 8);
+        printf("[TOUCH] Config verify: ver=0x%02X X_max=%d Y_max=%d touch_num=%d\n",
+               vfy[0], xm, ym, vfy[5]);
+        if (xm == 480 && ym == 480 && vfy[5] > 0) {
+            printf("[TOUCH] GT911 config applied successfully\n");
+            return true;
+        }
+    }
+    printf("[TOUCH] GT911 config verification failed\n");
+    return false;
+}
+
 uint8_t Touch_Init(void) {
 
-  GT911_Touch_Reset();
+  // V4: Waveshare example does NO reset — just keeps TP_RST HIGH via
+  // CH32V003 output register (already set in setup()).  Only V3 needs
+  // the INT-based address-selection reset.
+  if (!is_board_v4()) {
+    GT911_Touch_Reset();
+  } else {
+    printf("[TOUCH] V4: resetting GT911 via IO expander\n");
+    // GT911 address selection: INT HIGH during reset release → addr 0x14
+    pinMode(GT911_INT_PIN, OUTPUT);
+    digitalWrite(GT911_INT_PIN, HIGH);
+    // Pulse TP_RST LOW via IO expander
+    Set_EXIO(pin_tp_rst(), Low);
+    vTaskDelay(pdMS_TO_TICKS(10));
+    Set_EXIO(pin_tp_rst(), High);
+    vTaskDelay(pdMS_TO_TICKS(10));
+    // Release INT to input — GT911 drives it now
+    digitalWrite(GT911_INT_PIN, LOW);
+    pinMode(GT911_INT_PIN, INPUT);
+    vTaskDelay(pdMS_TO_TICKS(50));
+  }
 
   // Check NVS for a cached GT911 address from a previous successful probe.
   // After a soft reset (crash-reboot) the GT911 may not respond to probe
@@ -64,22 +168,19 @@ uint8_t Touch_Init(void) {
     prefs.end();
   }
 
-  // Auto-detect GT911 I2C address (v3=0x5D, v4=0x14)
+  // Auto-detect GT911 I2C address — probe both (like Waveshare example)
   bool probed = false;
-  Wire.beginTransmission(GT911_ADDR_PRIMARY);
-  if (Wire.endTransmission() == 0) {
-    gt911_addr = GT911_ADDR_PRIMARY;
-    probed = true;
-    printf("[TOUCH] GT911 found at 0x%02X (v3 board)\n", gt911_addr);
-  } else {
-    Wire.beginTransmission(GT911_ADDR_SECONDARY);
+  const uint8_t addrs[] = { GT911_ADDR_PRIMARY, GT911_ADDR_SECONDARY };
+  for (int i = 0; i < 2 && !probed; i++) {
+    Wire.beginTransmission(addrs[i]);
     if (Wire.endTransmission() == 0) {
-      gt911_addr = GT911_ADDR_SECONDARY;
+      gt911_addr = addrs[i];
       probed = true;
-      printf("[TOUCH] GT911 found at 0x%02X (v4 board)\n", gt911_addr);
-    } else if (cached_addr == GT911_ADDR_PRIMARY || cached_addr == GT911_ADDR_SECONDARY) {
-      // GT911 didn't respond (probably soft reset without power cycle).
-      // Use the cached address from a previous successful probe.
+      printf("[TOUCH] GT911 found at 0x%02X\n", gt911_addr);
+    }
+  }
+  if (!probed) {
+    if (cached_addr == GT911_ADDR_PRIMARY || cached_addr == GT911_ADDR_SECONDARY) {
       gt911_addr = cached_addr;
       printf("[TOUCH] GT911 not responding, using cached addr 0x%02X\n", gt911_addr);
     } else {
@@ -101,27 +202,78 @@ uint8_t Touch_Init(void) {
 
   GT911_Read_cfg();
 
-  attachInterrupt(GT911_INT_PIN, Touch_GT911_ISR, interrupt); 
+  // Check if GT911 has a valid config; if not, upload one for 480x480
+  {
+    uint8_t cfg_check[6];
+    if (I2C_Read_Touch(gt911_addr, 0x8047, cfg_check, 6)) {
+      uint16_t x_max = cfg_check[1] | ((uint16_t)cfg_check[2] << 8);
+      uint16_t y_max = cfg_check[3] | ((uint16_t)cfg_check[4] << 8);
+      uint8_t  t_num = cfg_check[5];
+      printf("[TOUCH] Config check: ver=%d X_max=%d Y_max=%d touch_num=%d\n",
+             cfg_check[0], x_max, y_max, t_num);
+      if (x_max == 0 || y_max == 0 || t_num == 0) {
+        printf("[TOUCH] GT911 has no valid config — uploading 480x480 config\n");
+        GT911_Upload_Config();
+        GT911_Read_cfg(); // re-read to confirm
+      }
+    }
+  }
+
+  // Read extended config for diagnostics
+  {
+    uint8_t cfg[7];
+    if (I2C_Read_Touch(gt911_addr, 0x8047, cfg, 7)) {
+      uint16_t x_max = cfg[1] | ((uint16_t)cfg[2] << 8);
+      uint16_t y_max = cfg[3] | ((uint16_t)cfg[4] << 8);
+      printf("[TOUCH] Config: ver=%d X=%d Y=%d n=%d\n",
+             cfg[0], x_max, y_max, cfg[5]);
+    }
+  }
+
+  // Clear any stale touch data from before reset
+  {
+    uint8_t status;
+    if (I2C_Read_Touch(gt911_addr, ESP_LCD_TOUCH_GT911_READ_XY_REG, &status, 1)) {
+      if (status != 0) {
+        uint8_t clear = 0;
+        I2C_Write_Touch(gt911_addr, ESP_LCD_TOUCH_GT911_READ_XY_REG, &clear, 1);
+      }
+    }
+  }
+
+  // V4: use polling only (Waveshare example doesn't use INT pin).
+  // V3: attach interrupt as before.
+  if (!is_board_v4()) {
+    attachInterrupt(GT911_INT_PIN, Touch_GT911_ISR, interrupt);
+  }
 
   return true;
 }
-/* Reset controller */
+/* Reset controller — V3 boards only (V4 uses Waveshare approach: no reset).
+   V3: INT LOW during RST release → address 0x5D */
 uint8_t GT911_Touch_Reset(void)
 {
-  printf("[TOUCH] GT911_Touch_Reset: board=%s, expander=0x%02X\n",
-         is_board_v4() ? "v4" : "v3", g_tca9554_address);
+  printf("[TOUCH] GT911_Touch_Reset: board=v3, expander=0x%02X\n", g_tca9554_address);
 
-  // Drive INT pin LOW before releasing reset → GT911 latches I2C address 0x5D
-  pinMode(GT911_INT_PIN, OUTPUT);                   
-  digitalWrite(GT911_INT_PIN, LOW);                  
+  pinMode(GT911_INT_PIN, OUTPUT);
 
-  Set_EXIO(pin_tp_rst(),Low);   // TP_RST: V3=pin1(IO0), V4=pin2(EXIO1)
+  // 1. Assert reset
+  Set_EXIO(pin_tp_rst(), Low);   // TP_RST LOW via IO expander
+  // 2. INT LOW during reset hold (V3: LOW → address 0x5D)
+  digitalWrite(GT911_INT_PIN, LOW);
   vTaskDelay(pdMS_TO_TICKS(10));
-  Set_EXIO(pin_tp_rst(),High);
-  vTaskDelay(pdMS_TO_TICKS(200));
 
-  digitalWrite(GT911_INT_PIN, HIGH);                
-  pinMode(GT911_INT_PIN, INPUT);                     
+  // 3. V3: INT stays LOW → address 0x5D
+  vTaskDelay(pdMS_TO_TICKS(1));
+
+  // 4. Release reset — GT911 latches address from INT level
+  Set_EXIO(pin_tp_rst(), High);
+  vTaskDelay(pdMS_TO_TICKS(10));
+
+  // 5. Switch INT to floating input — GT911 drives it as output now
+  digitalWrite(GT911_INT_PIN, LOW);
+  pinMode(GT911_INT_PIN, INPUT);
+  vTaskDelay(pdMS_TO_TICKS(50));
 
   printf("[TOUCH] GT911_Touch_Reset: done\n");
   return true;

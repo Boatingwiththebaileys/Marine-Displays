@@ -51,7 +51,13 @@ extern "C" void show_fallback_error_screen_if_needed() {
         }
     }
     if (all_default && !g_error_screen_active) {
-        Serial.println("[ERROR] All screen configs are default/blank. Showing fallback error screen.");
+        // If WiFi is connected, the user can configure via the web UI — just
+        // show the default screens (logo, swipeable settings menu).
+        if (WiFi.status() == WL_CONNECTED) {
+            Serial.println("[INFO] No screen config yet, but WiFi connected — showing default UI.");
+            return;
+        }
+        Serial.println("[ERROR] All screen configs are default/blank and no WiFi. Showing fallback error screen.");
         g_error_screen_active = true;
         #ifdef LVGL_H
         // Do NOT call lv_obj_clean() — that frees the global UI object pointers
@@ -66,7 +72,7 @@ extern "C" void show_fallback_error_screen_if_needed() {
         lv_obj_set_style_border_width(overlay, 0, LV_PART_MAIN);
         lv_obj_align(overlay, LV_ALIGN_CENTER, 0, 0);
         lv_obj_t *label = lv_label_create(overlay);
-        lv_label_set_text(label, "ERROR: No valid config loaded.\nCheck SD card or NVS.\n\nConnect to WiFi AP:\nESP32-SquareDisplay\nThen open 192.168.4.1");
+        lv_label_set_text(label, "No config found - Check SD card or NVS.\n\nIf this is first setup, connect to WiFi AP:\nESP32-SquareDisplay\nThen open 192.168.4.1");
         lv_obj_align(label, LV_ALIGN_CENTER, 0, 0);
         #endif
     }
@@ -2184,13 +2190,38 @@ void handle_device_page() {
     html += "<option value='10'" + String(screen_off_timeout_min==10?" selected":"") + ">10 min</option>";
     html += "<option value='30'" + String(screen_off_timeout_min==30?" selected":"") + ">30 min</option>";
     html += "</select></div>";
-    // Brightness
-    html += "<div class='form-row'><label>Brightness:</label><select name='brightness_lv'>";
-    html += "<option value='0'" + String(brightness_level==0?" selected":"") + ">Normal</option>";
-    html += "<option value='1'" + String(brightness_level==1?" selected":"") + ">Dim</option>";
-    html += "<option value='2'" + String(brightness_level==2?" selected":"") + ">Night</option>";
-    html += "<option value='3'" + String(brightness_level==3?" selected":"") + ">Night+</option>";
-    html += "</select></div>";
+    // Brightness — V4: unified slider (10-200, with red mode below 110), V3: 4-step slider
+    if (is_board_v4()) {
+        html += "<div class='form-row'><label>Brightness:</label>";
+        html += "<input type='range' name='brightness_lv' min='10' max='200' value='" + String(brightness_level) + "'";
+        html += " oninput='var v=parseInt(this.value),s=this.nextElementSibling;";
+        html += "if(v>=110){var f=(v-110)/90;var p=Math.round(10+f*f*90);s.textContent=p+\"%\";s.style.color=\"#111\";}";
+        html += "else{var f=(v-10)/99;var p=Math.round(10+f*f*90);s.textContent=\"R:\"+p+\"%\";s.style.color=\"#f44\";}' style='width:120px;vertical-align:middle;'>";
+        {
+            float frac;
+            int pwm;
+            if (brightness_level >= 110) {
+                frac = (float)(brightness_level - 110) / 90.0f;
+            } else {
+                frac = (float)(brightness_level - 10) / 99.0f;
+            }
+            pwm = 10 + (int)(frac * frac * 90.0f);
+            if (brightness_level >= 110) {
+                html += "<span style='margin-left:8px;color:#111;'>" + String(pwm) + "%</span>";
+            } else {
+                html += "<span style='margin-left:8px;color:#f44;'>R:" + String(pwm) + "%</span>";
+            }
+        }
+        html += "</div>";
+    } else {
+        static const char *blabels[] = {"Normal", "Dim", "Night", "Night+"};
+        html += "<div class='form-row'><label>Brightness:</label>";
+        html += "<input type='range' name='brightness_lv' min='0' max='3' value='" + String(brightness_level) + "'";
+        html += " oninput='this.nextElementSibling.textContent=[\"Normal\",\"Dim\",\"Night\",\"Night+\"][this.value]'";
+        html += " style='width:120px;vertical-align:middle;'>";
+        html += "<span style='margin-left:8px;color:#fff;'>" + String(blabels[brightness_level < 4 ? brightness_level : 0]) + "</span>";
+        html += "</div>";
+    }
     // Unit system
     html += "<div class='form-row'><label>Units:</label><select name='unit_system'>";
     html += "<option value='0'" + String(unit_system==UNIT_METRIC?" selected":"") + ">Metric</option>";
@@ -2249,7 +2280,14 @@ void handle_save_device() {
 
         // Brightness level
         uint8_t bl = (uint8_t)config_server.arg("brightness_lv").toInt();
-        if (bl > 3) bl = 0;
+        if (is_board_v4()) {
+            int bl_raw = config_server.arg("brightness_lv").toInt();
+            if (bl_raw > 200) bl_raw = 200;
+            if (bl_raw < 10) bl_raw = 10;
+            bl = (uint8_t)bl_raw;
+        } else {
+            if (bl > 3) bl = 0;
+        }
         set_brightness_level(bl);
 
         // Unit system
@@ -2383,8 +2421,10 @@ void setup_network() {
         // Silence buzzer during WiFi wait — setup() may have left BEE_EN/PIN6
         // HIGH if the I2C expander direction write failed after a crash-reboot.
         if (is_board_v4()) {
-            Set_EXIOS(Read_EXIOS(exio_output_reg()) & (uint8_t)~(1 << (PIN_BEE_EN - 1)));
-            Mode_EXIO(PIN_BEE_EN, 1);
+            uint8_t cur_dir;
+            if (I2C_Read_EXIO_safe(exio_dir_reg(), &cur_dir) && cur_dir != CH32V003_DIR_SAFE) {
+                I2C_Write_EXIO(exio_dir_reg(), CH32V003_DIR_SAFE);
+            }
         } else {
             Set_EXIOS(Read_EXIOS(exio_output_reg()) & (uint8_t)~(1 << (EXIO_PIN6 - 1)));
             Mode_EXIOS(0x00);

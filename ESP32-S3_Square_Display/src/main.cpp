@@ -956,14 +956,12 @@ void setup() {
     detect_expander_address();
 
     if (is_board_v4()) {
-      // V4 (CH32V003): Set output latch to safe values BEFORE configuring directions.
-      // All outputs HIGH: TP_RST released, LCD_RST released, SDCS deselected, SYS_EN on.
-      // BEE_EN output latch doesn't matter since direction mask keeps it as input.
-      Set_EXIOS(0xFF);
-      // Direction: TCA convention 0xC5 → driver inverts to 0x3A for CH32V003
-      // EXIO1=out(TP_RST), EXIO3=out(LCD_RST), EXIO4=out(SDCS), EXIO5=out(SYS_EN)
-      // EXIO0=in(charger), EXIO2=in(TP_INT), EXIO6=in(BEE_EN safe), EXIO7=in(RTC_INT)
-      TCA9554PWR_Init(V4_DIR_TCA_CONVENTION);
+      // V4 (CH32V003): Match Waveshare official example exactly.
+      // Direction 0xFF: ALL pins output.
+      // Output 0x3A: TP_RST=HIGH, LCD_RST=HIGH, SYS_EN=HIGH, SD_CS=HIGH,
+      //              BEE_EN=LOW (buzzer off), EXIO0/2/7=LOW.
+      I2C_Write_EXIO(CH32V003_DIR_REG, CH32V003_DIR_ALL_OUT);
+      I2C_Write_EXIO(CH32V003_OUTPUT_REG, CH32V003_OUT_NORMAL);
     } else {
       // V3 (TCA9554): Write output latch before switching to output mode
       Set_EXIOS(0xDF);             // bit5=0 (PIN6 LOW on V3)
@@ -1026,13 +1024,12 @@ void setup() {
     esp_log_level_set("esp_panel", ESP_LOG_WARN);
 
     // Initialize the display
-    ets_printf("*** LCD_Init start ***\r\n");
     LCD_Init();
-    ets_printf("*** LCD_Init done ***\r\n");
     // Re-assert safe IO expander state after LCD_Init (which may have modified registers)
     if (is_board_v4()) {
-      // V4: re-assert CH32V003 direction mask (BEE_EN as input = safe)
-      TCA9554PWR_Init(V4_DIR_TCA_CONVENTION);
+      // V4: re-assert Waveshare-matching CH32V003 state after LCD_Init
+      I2C_Write_EXIO(CH32V003_DIR_REG, CH32V003_DIR_ALL_OUT);
+      I2C_Write_EXIO(CH32V003_OUTPUT_REG, CH32V003_OUT_NORMAL);
     } else {
       // V3: re-assert all outputs with PIN6 LOW
       Set_EXIOS(Read_EXIOS(exio_output_reg()) & (uint8_t)~(1 << (EXIO_PIN6 - 1)));
@@ -1048,8 +1045,9 @@ void setup() {
                    (unsigned)heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
     }
 
-    // Initialize GT911 touch controller: reset with INT=LOW to force address 0x5D,
-    // auto-detect address (v3=0x5D, v4 may be 0x14), read config, attach interrupt.
+    // Initialize GT911 touch controller.
+    // V4: Waveshare approach — no reset, just probe both addresses.
+    // V3: reset with INT=LOW to force address 0x5D, attach interrupt.
     Touch_Init();
     Serial.println("Touch controller initialized");
     Serial.flush();
@@ -1080,13 +1078,6 @@ void setup() {
 
     // Ensure backlight is on for normal operation
     Set_Backlight(100);
-    Serial.println("[DISPLAY] Backlight set to 100");
-    Serial.flush();
-
-    // Ensure backlight is on for normal operation
-    Set_Backlight(100);
-    Serial.println("[DISPLAY] Backlight set to 100");
-    Serial.flush();
 
 
     
@@ -1615,6 +1606,7 @@ void loop() {
     }
 
     Lvgl_Loop();
+    brightness_nvs_flush();
 
     // WS idle watchdog: resume WS automatically once the config page has been
     // idle for 10 seconds.  This is the ONLY path that resumes WS after a save —
@@ -1638,20 +1630,21 @@ void loop() {
         }
     }
 
-    // Buzzer safety maintenance — runs for both v3 and v4 every 50 ms.
-    // After a crash-reboot the I2C bus can be mid-transaction so the direction
-    // write in setup() silently fails, leaving BEE_EN/PIN6 as OUTPUT HIGH.
-    // Periodically re-assert the safe state so the buzzer can never stay stuck.
+    // Buzzer safety maintenance — V3 every 200 ms, V4 every 30 s.
+    // V4: With Waveshare setup (dir=0xFF, all outputs), buzzer is controlled
+    // via output register bit 6 (BEE_EN).  Periodically ensure it's LOW.
     {
         static unsigned long last_buz_maintain = 0;
         unsigned long now_m = millis();
-        if (now_m - last_buz_maintain >= 50) {
-            last_buz_maintain = now_m;
-            if (is_board_v4()) {
-                // Clear BEE_EN output latch (bit6) and keep direction as INPUT
-                Set_EXIOS(Read_EXIOS(exio_output_reg()) & (uint8_t)~(1 << (PIN_BEE_EN - 1)));
-                Mode_EXIO(PIN_BEE_EN, 1); // input = safe (can't drive buzzer)
-            } else {
+        if (is_board_v4()) {
+            // V4: unconditional write every 30 s (skip first 3 s to avoid startup beep)
+            if (now_m > 3000 && (now_m - last_buz_maintain >= 30000)) {
+                last_buz_maintain = now_m;
+                Set_EXIO(PIN_BEE_EN, Low);
+            }
+        } else {
+            if (now_m - last_buz_maintain >= 200) {
+                last_buz_maintain = now_m;
                 Set_EXIOS(Read_EXIOS(exio_output_reg()) & (uint8_t)~(1 << (EXIO_PIN6 - 1)));
                 Mode_EXIOS(0x00);
             }
