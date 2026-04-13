@@ -1,10 +1,11 @@
 Boating with the Baileys
-Feb 2026
+Apr 2026
 
-ESP32 customisable display using data from SignalK. 
+ESP32 customisable display using data directly from the boats NMEA2000 network. 
 ------------------------------
 
 It features:
+- 30+ N2K PGNs supported — engine, transmission, fluid levels, rudder, heading, rate of turn, attitude, battery/DC, boat speed, depth,  distance log, GPS position, COG/SOG, XTE, waypoints, AIS, wind, environment/temp/pressure, trim tabs, system time
 - Customisable background images,
 - Custom icons, 
 - Alerting through icon colours and built in buzzer
@@ -12,11 +13,14 @@ It features:
 - WebUI driven
 - Touch and non Touch options
 - Number display with different display options, Single large display, Dual screen, Quad Screen
-- Guage with added number display (Wind instrument style)
+- Dual Gauge, Guage with added number display (Wind instrument style)
 - Graph display with the option for an additional data source & data retained while device is powered
-- Navigation Display with heading & Dual data feilds
+- Navigation Display with heading & Dual data fields
 - Position and Time display
 - AIS Radar display
+- Dimming with night mode, display sleep options
+- Unit conversions
+- OTA updates
 
 ESP32-S3 Square Display
 
@@ -48,10 +52,9 @@ On first boot, the display creates an SSID called ESP32-SquareDisplay with the p
 
 Here is a video of the device running the code and the different display options - DIY ESP32 Marine MFD – Square Multifunction Boat Display using SignalK Data https://youtu.be/FAPvdz6oN7A
 
+A new video is on its way about how to setup and use this display on the NMEA2k network, but for now, just connect the CAN H/L connections on the back of the display to your network and the display should show your data. Make sure the device is powered from the same source as the N2K network, remember termination and also placement of the display is important. Do so at your own risk.
+
 The Baileys
-
-
-
 
 
 
