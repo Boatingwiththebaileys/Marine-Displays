@@ -208,6 +208,7 @@ bool apply_screen_visuals_for_one(int s) {
             quad_number_display_destroy(s);
             gauge_number_display_destroy(s);
             graph_display_destroy(s);
+            attitude_display_destroy(s);
             lv_obj_t *upper_needle = get_upper_needle_obj_for_screen(s);
             lv_obj_t *lower_needle = get_lower_needle_obj_for_screen(s);
             if (upper_needle) lv_obj_add_flag(upper_needle, LV_OBJ_FLAG_HIDDEN);
@@ -226,6 +227,7 @@ bool apply_screen_visuals_for_one(int s) {
             quad_number_display_destroy(s);
             gauge_number_display_destroy(s);
             graph_display_destroy(s);
+            attitude_display_destroy(s);
             lv_obj_t *upper_needle = get_upper_needle_obj_for_screen(s);
             lv_obj_t *lower_needle = get_lower_needle_obj_for_screen(s);
             if (upper_needle) lv_obj_add_flag(upper_needle, LV_OBJ_FLAG_HIDDEN);
@@ -247,6 +249,7 @@ bool apply_screen_visuals_for_one(int s) {
             dual_number_display_destroy(s);
             gauge_number_display_destroy(s);
             graph_display_destroy(s);
+            attitude_display_destroy(s);
             lv_obj_t *upper_needle = get_upper_needle_obj_for_screen(s);
             lv_obj_t *lower_needle = get_lower_needle_obj_for_screen(s);
             if (upper_needle) lv_obj_add_flag(upper_needle, LV_OBJ_FLAG_HIDDEN);
@@ -270,6 +273,7 @@ bool apply_screen_visuals_for_one(int s) {
             dual_number_display_destroy(s);
             quad_number_display_destroy(s);
             graph_display_destroy(s);
+            attitude_display_destroy(s);
             lv_obj_t *lower_needle = get_lower_needle_obj_for_screen(s);
             if (lower_needle) lv_obj_add_flag(lower_needle, LV_OBJ_FLAG_HIDDEN);
             lv_obj_t *bot = get_bottom_icon_obj_for_screen(s);
@@ -309,6 +313,7 @@ bool apply_screen_visuals_for_one(int s) {
             quad_number_display_destroy(s);
             gauge_number_display_destroy(s);
             graph_display_destroy(s);
+            attitude_display_destroy(s);
             lv_obj_t *upper_needle = get_upper_needle_obj_for_screen(s);
             lv_obj_t *lower_needle = get_lower_needle_obj_for_screen(s);
             if (upper_needle) lv_obj_add_flag(upper_needle, LV_OBJ_FLAG_HIDDEN);
@@ -328,6 +333,7 @@ bool apply_screen_visuals_for_one(int s) {
             quad_number_display_destroy(s);
             gauge_number_display_destroy(s);
             graph_display_destroy(s);
+            attitude_display_destroy(s);
             position_display_destroy(s);
             mark_position_display_destroyed(s + 1);
             compass_display_create(s);
@@ -340,6 +346,7 @@ bool apply_screen_visuals_for_one(int s) {
             quad_number_display_destroy(s);
             gauge_number_display_destroy(s);
             graph_display_destroy(s);
+            attitude_display_destroy(s);
             compass_display_destroy(s);
             mark_compass_display_destroyed(s + 1);
             ais_display_destroy(s);

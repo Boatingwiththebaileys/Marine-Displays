@@ -35,14 +35,19 @@ except Exception:
 
 fw_version = "%s-%s" % (version_base, git_hash)
 
-# Check for uncommitted changes and append -dirty
+# Check for uncommitted changes (tracked files only) and append -dirty
 try:
     status = subprocess.check_output(
-        ["git", "status", "--porcelain"],
+        ["git", "diff", "--shortstat"],
         cwd=script_dir,
         stderr=subprocess.DEVNULL
     ).decode().strip()
-    if status:
+    staged = subprocess.check_output(
+        ["git", "diff", "--cached", "--shortstat"],
+        cwd=script_dir,
+        stderr=subprocess.DEVNULL
+    ).decode().strip()
+    if status or staged:
         fw_version += "-dirty"
 except Exception:
     pass
