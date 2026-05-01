@@ -1670,10 +1670,15 @@ void handle_save_gauges() {
                         }
                     };
                     
-                    saveQuadrant("tl", screen_configs[s].quad_tl_path, screen_configs[s].quad_tl_font_size, screen_configs[s].quad_tl_font_color);
-                    saveQuadrant("tr", screen_configs[s].quad_tr_path, screen_configs[s].quad_tr_font_size, screen_configs[s].quad_tr_font_color);
-                    saveQuadrant("bl", screen_configs[s].quad_bl_path, screen_configs[s].quad_bl_font_size, screen_configs[s].quad_bl_font_color);
-                    saveQuadrant("br", screen_configs[s].quad_br_path, screen_configs[s].quad_br_font_size, screen_configs[s].quad_br_font_color);
+                    // Hidden quad form fields are still submitted for non-quad screens.
+                    // Restrict these writes to Quad screens so Compass BL/BR extras are
+                    // not overwritten by stale quad_* POST values.
+                    if (screen_configs[s].display_type == DISPLAY_TYPE_QUAD) {
+                        saveQuadrant("tl", screen_configs[s].quad_tl_path, screen_configs[s].quad_tl_font_size, screen_configs[s].quad_tl_font_color);
+                        saveQuadrant("tr", screen_configs[s].quad_tr_path, screen_configs[s].quad_tr_font_size, screen_configs[s].quad_tr_font_color);
+                        saveQuadrant("bl", screen_configs[s].quad_bl_path, screen_configs[s].quad_bl_font_size, screen_configs[s].quad_bl_font_color);
+                        saveQuadrant("br", screen_configs[s].quad_br_path, screen_configs[s].quad_br_font_size, screen_configs[s].quad_br_font_color);
+                    }
                     
                     // Save gauge+number display settings
                     String gaugeNumCenterPathKey = "gauge_num_center_path_" + String(s);
