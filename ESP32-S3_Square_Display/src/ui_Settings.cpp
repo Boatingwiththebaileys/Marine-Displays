@@ -136,7 +136,7 @@ extern "C" void update_ip_address(void)
     // In AP mode: show SSID/password, hide RSSI. When connected: show RSSI, hide creds.
     if (ui_APCredsLabel != NULL) {
         if (in_ap_mode) {
-            lv_label_set_text(ui_APCredsLabel, "SSID: ESP32-RoundDisplay\nPass: 12345678");
+            lv_label_set_text(ui_APCredsLabel, "SSID: ESP32-SquareDisplay\nPass: 12345678");
             lv_obj_clear_flag(ui_APCredsLabel, LV_OBJ_FLAG_HIDDEN);
         } else {
             lv_obj_add_flag(ui_APCredsLabel, LV_OBJ_FLAG_HIDDEN);
@@ -645,7 +645,7 @@ extern "C" void ui_Settings_screen_init(void)
 
     // AP credentials label (shown instead of RSSI when in AP mode)
     ui_APCredsLabel = lv_label_create(ui_SettingsPanel);
-    lv_label_set_text(ui_APCredsLabel, "SSID: ESP32-RoundDisplay\nPass: 12345678");
+    lv_label_set_text(ui_APCredsLabel, "SSID: ESP32-SquareDisplay\nPass: 12345678");
     lv_obj_set_style_text_color(ui_APCredsLabel, lv_color_hex(0xFFAA00), 0);
     lv_obj_set_style_text_font(ui_APCredsLabel, &lv_font_montserrat_14, 0);
     lv_obj_set_x(ui_APCredsLabel, 0);
