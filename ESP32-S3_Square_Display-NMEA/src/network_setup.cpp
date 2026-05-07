@@ -52,31 +52,8 @@ extern "C" void show_fallback_error_screen_if_needed() {
             }
         }
     }
-    if (all_default && !g_error_screen_active) {
-        // If WiFi is connected, the user can configure via the web UI — just
-        // show the default screens (logo, swipeable settings menu).
-        if (WiFi.status() == WL_CONNECTED) {
-            Serial.println("[INFO] No screen config yet, but WiFi connected — showing default UI.");
-            return;
-        }
-        Serial.println("[ERROR] All screen configs are default/blank and no WiFi. Showing fallback error screen.");
-        g_error_screen_active = true;
-        #ifdef LVGL_H
-        // Do NOT call lv_obj_clean() — that frees the global UI object pointers
-        // (ui_TopIcon1, ui_Needle, etc.) while loop() continues to use them,
-        // causing dangling-pointer PSRAM heap corruption.
-        // Create an opaque overlay instead so existing objects stay valid.
-        lv_obj_t *scr = lv_scr_act();
-        lv_obj_t *overlay = lv_obj_create(scr);
-        lv_obj_set_size(overlay, LV_HOR_RES, LV_VER_RES);
-        lv_obj_set_style_bg_color(overlay, lv_color_black(), LV_PART_MAIN);
-        lv_obj_set_style_bg_opa(overlay, LV_OPA_COVER, LV_PART_MAIN);
-        lv_obj_set_style_border_width(overlay, 0, LV_PART_MAIN);
-        lv_obj_align(overlay, LV_ALIGN_CENTER, 0, 0);
-        lv_obj_t *label = lv_label_create(overlay);
-        lv_label_set_text(label, "No config found - Check SD card or NVS.\n\nIf this is first setup, connect to WiFi AP:\nESP32-SquareDisplay\nThen open 192.168.4.1");
-        lv_obj_align(label, LV_ALIGN_CENTER, 0, 0);
-        #endif
+    if (all_default) {
+        Serial.println("[WARN] No valid config loaded. Keeping default UI (logo/settings) so setup remains accessible.");
     }
 }
 
