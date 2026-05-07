@@ -828,10 +828,10 @@ void handle_gauges_page() {
     // Test mode toggle — AJAX, no full page reload
     html += "<div style='margin-bottom:16px;text-align:center;'>";
     html += "<button type='button' id='testModeBtn' onclick='toggleTestMode()' style='padding:8px 16px;font-size:1em;'>";
-    html += (test_mode ? "Disable Setup Mode" : "Enable Setup Mode");
+    html += (test_mode ? "Disable Test Mode" : "Enable Test Mode");
     html += "</button> ";
     html += "<span id='testModeLabel' style='font-weight:bold;color:";
-    html += (test_mode ? "#388e3c;'>SETUP MODE ON" : "#b71c1c;'>SETUP MODE OFF");
+    html += (test_mode ? "#388e3c;'>TEST MODE ON" : "#b71c1c;'>TEST MODE OFF");
     html += "</span></div>";
     // Form wrapper — screen content is injected inside via AJAX
     html += "<form id='calibrationForm' method='POST' action='/save-gauges' accept-charset='utf-8'>";
@@ -951,13 +951,14 @@ void handle_gauges_page() {
     html += "    var btn=document.getElementById('testModeBtn');\n";
     html += "    var lbl=document.getElementById('testModeLabel');\n";
     html += "    if(j.test_mode){\n";
-    html += "      if(btn)btn.textContent='Disable Setup Mode';\n";
-    html += "      if(lbl){lbl.style.color='#388e3c';lbl.textContent='SETUP MODE ON';}\n";
+    html += "      if(btn)btn.textContent='Disable Test Mode';\n";
+    html += "      if(lbl){lbl.style.color='#388e3c';lbl.textContent='TEST MODE ON';}\n";
     html += "    } else {\n";
-    html += "      if(btn)btn.textContent='Enable Setup Mode';\n";
-    html += "      if(lbl){lbl.style.color='#b71c1c';lbl.textContent='SETUP MODE OFF';}\n";
+    html += "      if(btn)btn.textContent='Enable Test Mode';\n";
+    html += "      if(lbl){lbl.style.color='#b71c1c';lbl.textContent='TEST MODE OFF';}\n";
     html += "    }\n";
-    html += "    var prev=currentTab; currentTab=-1; showScreenTab(prev>=0?prev:0);\n";
+    html += "    var testBtns=document.querySelectorAll('button[onclick^=\"testGaugePoint\"]');\n";
+    html += "    for(var i=0;i<testBtns.length;i++){ testBtns[i].disabled = !j.test_mode; }\n";
     html += "  }).catch(function(e){console.error(e);});\n";
     html += "}\n";
 
