@@ -669,10 +669,10 @@ void handle_gauges_page() {
     // Test mode toggle — AJAX, no full page reload
     html += "<div style='margin-bottom:16px;text-align:center;'>";
     html += "<button type='button' id='testModeBtn' onclick='toggleTestMode()' style='padding:8px 16px;font-size:1em;'>";
-    html += (test_mode ? "Disable Setup Mode" : "Enable Setup Mode");
+    html += (test_mode ? "Disable Test Mode" : "Enable Test Mode");
     html += "</button> ";
     html += "<span id='testModeLabel' style='font-weight:bold;color:";
-    html += (test_mode ? "#388e3c;'>SETUP MODE ON" : "#b71c1c;'>SETUP MODE OFF");
+    html += (test_mode ? "#388e3c;'>TEST MODE ON" : "#b71c1c;'>TEST MODE OFF");
     html += "</span></div>";
 
     // Form wrapper — screen content is injected inside via AJAX
@@ -733,6 +733,7 @@ void handle_gauges_page() {
     // initScreenTab: called after injecting screen HTML — set up toggles
     html += "function initScreenTab(s){\n";
     html += "  toggleGaugeConfig(s);\n";
+    html += "  toggleBottomGaugeConfig(s);\n";
     html += "}\n";
 
     // toggleGaugeConfig — show/hide Gauge+Number config section
@@ -741,6 +742,14 @@ void handle_gauges_page() {
     html += "  if(!sel) return;\n";
     html += "  var gnDiv=document.getElementById('gnumcfg_'+screen);\n";
     html += "  if(gnDiv) gnDiv.style.display=(sel.value==='4'?'block':'none');\n";
+    html += "}\n";
+
+    // Show/hide Bottom Gauge config based on checkbox state
+    html += "function toggleBottomGaugeConfig(screen){\n";
+    html += "  var cb=document.querySelector('input[name=\"showbottom_'+screen+'\"]');\n";
+    html += "  var div=document.getElementById('bottomcfg_'+screen);\n";
+    html += "  if(!div) return;\n";
+    html += "  div.style.display=(cb&&cb.checked)?'block':'none';\n";
     html += "}\n";
 
     // AJAX save — POST only the visible screen's fields
@@ -771,13 +780,14 @@ void handle_gauges_page() {
     html += "    var btn=document.getElementById('testModeBtn');\n";
     html += "    var lbl=document.getElementById('testModeLabel');\n";
     html += "    if(j.test_mode){\n";
-    html += "      if(btn)btn.textContent='Disable Setup Mode';\n";
-    html += "      if(lbl){lbl.style.color='#388e3c';lbl.textContent='SETUP MODE ON';}\n";
+    html += "      if(btn)btn.textContent='Disable Test Mode';\n";
+    html += "      if(lbl){lbl.style.color='#388e3c';lbl.textContent='TEST MODE ON';}\n";
     html += "    } else {\n";
-    html += "      if(btn)btn.textContent='Enable Setup Mode';\n";
-    html += "      if(lbl){lbl.style.color='#b71c1c';lbl.textContent='SETUP MODE OFF';}\n";
+    html += "      if(btn)btn.textContent='Enable Test Mode';\n";
+    html += "      if(lbl){lbl.style.color='#b71c1c';lbl.textContent='TEST MODE OFF';}\n";
     html += "    }\n";
-    html += "    var prev=currentTab; currentTab=-1; showScreenTab(prev>=0?prev:0);\n";
+    html += "    var testBtns=document.querySelectorAll('button[onclick^=\"testGaugePoint\"]');\n";
+    html += "    for(var i=0;i<testBtns.length;i++){ testBtns[i].disabled = !j.test_mode; }\n";
     html += "  }).catch(function(e){console.error(e);});\n";
     html += "}\n";
 
@@ -886,15 +896,13 @@ void handle_gauges_screen() {
     for (int g = 0; g < 2; ++g) {
         // Show Bottom Gauge checkbox (only once per screen)
         if (g == 0) {
-            html += "<div style='margin-bottom:8px;'><label>Show Bottom Gauge: <input type='checkbox' name='showbottom_" + String(s) + "'";
+            html += "<div style='margin-bottom:8px;'><label>Show Bottom Gauge: <input type='checkbox' name='showbottom_" + String(s) + "' onchange='toggleBottomGaugeConfig(" + String(s) + ")'";
             if (screen_configs[s].show_bottom) html += " checked";
             html += "></label></div>";
         }
         int idx = s * 2 + g;
-        // skip rendering bottom gauge config if disabled
-        if (g == 1 && !screen_configs[s].show_bottom) {
-            html += "<div style='margin-bottom:8px;'><em>Bottom gauge disabled for this screen.</em></div>";
-            continue;
+        if (g == 1) {
+            html += "<div id='bottomcfg_" + String(s) + "' style='display:" + String(screen_configs[s].show_bottom ? "block" : "none") + ";'>";
         }
         html += "<b>" + String(g == 0 ? "Top Gauge" : "Bottom Gauge") + "</b>";
         // SignalK Path
@@ -966,6 +974,9 @@ void handle_gauges_screen() {
         html += "</div>";
 
         html += "</div>"; // close icon-section
+        if (g == 1) {
+            html += "</div>"; // close bottomcfg wrapper
+        }
         flushHtml(); // flush after each gauge to keep heap usage bounded
     }
     flushHtml();
