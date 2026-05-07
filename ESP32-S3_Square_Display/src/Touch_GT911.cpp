@@ -10,6 +10,66 @@ struct GT911_Touch touch_data = {0};
 static unsigned long last_i2c_err_log = 0;
 #define I2C_ERR_LOG_INTERVAL_MS 5000
 
+bool I2C_Read_Touch(uint8_t Driver_addr, uint16_t Reg_addr, uint8_t *Reg_data, uint32_t Length);
+
+static bool GT911_ReadProductIdAt(uint8_t addr, uint8_t *id)
+{
+  return I2C_Read_Touch(addr, ESP_LCD_TOUCH_GT911_PRODUCT_ID_REG, id, 3)
+      && id[0] == 0x39 && id[1] == 0x31 && id[2] == 0x31;
+}
+
+// Probe both GT911 addresses and switch to the one that returns a valid product ID.
+static bool GT911_ProbeAndSelect(bool verbose)
+{
+  const uint8_t addrs[] = { GT911_ADDR_PRIMARY, GT911_ADDR_SECONDARY };
+  uint8_t id[3] = {0};
+  for (int i = 0; i < 2; i++) {
+    if (GT911_ReadProductIdAt(addrs[i], id)) {
+      if (gt911_addr != addrs[i] && verbose) {
+        printf("[TOUCH] GT911 switched addr 0x%02X -> 0x%02X\n", gt911_addr, addrs[i]);
+      } else if (verbose) {
+        printf("[TOUCH] GT911 detected at 0x%02X\n", addrs[i]);
+      }
+      gt911_addr = addrs[i];
+      return true;
+    }
+  }
+  return false;
+}
+
+static bool GT911_V4_ResetAndPreferPrimary(void)
+{
+  uint8_t id[3] = {0};
+
+  for (int attempt = 0; attempt < 2; ++attempt) {
+    // Reassert the known-safe CH32 state before touching TP_RST so buzzer and
+    // other outputs stay quiet across warm boots.
+    I2C_Write_EXIO(CH32V003_DIR_REG, CH32V003_DIR_ALL_OUT);
+    I2C_Write_EXIO(CH32V003_OUTPUT_REG, CH32V003_OUT_NORMAL);
+
+    // Force the GT911 onto 0x5D by holding INT low through reset release.
+    pinMode(GT911_INT_PIN, OUTPUT);
+    digitalWrite(GT911_INT_PIN, LOW);
+    Set_EXIO(pin_tp_rst(), Low);
+    vTaskDelay(pdMS_TO_TICKS(attempt == 0 ? 12 : 20));
+    Set_EXIO(pin_tp_rst(), High);
+    vTaskDelay(pdMS_TO_TICKS(attempt == 0 ? 12 : 20));
+    digitalWrite(GT911_INT_PIN, LOW);
+    pinMode(GT911_INT_PIN, INPUT);
+    vTaskDelay(pdMS_TO_TICKS(attempt == 0 ? 35 : 60));
+
+    if (GT911_ReadProductIdAt(GT911_ADDR_PRIMARY, id)) {
+      gt911_addr = GT911_ADDR_PRIMARY;
+      printf("[TOUCH] GT911 detected at 0x%02X\n", gt911_addr);
+      return true;
+    }
+
+    printf("[TOUCH] V4 force-0x5D attempt %d did not latch\n", attempt + 1);
+  }
+
+  return false;
+}
+
 
 bool I2C_Read_Touch(uint8_t Driver_addr, uint16_t Reg_addr, uint8_t *Reg_data, uint32_t Length)
 {
@@ -24,7 +84,17 @@ bool I2C_Read_Touch(uint8_t Driver_addr, uint16_t Reg_addr, uint8_t *Reg_data, u
     }
     return false;
   }
-  Wire.requestFrom(Driver_addr, Length);
+  uint32_t got = Wire.requestFrom(Driver_addr, Length);
+  if (got != Length) {
+    unsigned long now = millis();
+    if (now - last_i2c_err_log >= I2C_ERR_LOG_INTERVAL_MS) {
+      last_i2c_err_log = now;
+      printf("[TOUCH] I2C short read (addr=0x%02X, reg=0x%04X, got=%u, need=%u)\r\n",
+             Driver_addr, Reg_addr, (unsigned)got, (unsigned)Length);
+    }
+    while (Wire.available()) { (void)Wire.read(); }
+    return false;
+  }
   for (int i = 0; i < Length; i++) {
     *Reg_data++ = Wire.read();
   }
@@ -142,20 +212,15 @@ uint8_t Touch_Init(void) {
   // the INT-based address-selection reset.
   if (!is_board_v4()) {
     GT911_Touch_Reset();
+    // V3 legacy/stable path: fixed GT911 address and interrupt-driven touch.
+    gt911_addr = GT911_ADDR_PRIMARY;
+    printf("[TOUCH] GT911 detected at 0x%02X\n", gt911_addr);
+    GT911_Read_cfg();
+    attachInterrupt(GT911_INT_PIN, Touch_GT911_ISR, interrupt);
+    return true;
   } else {
-    printf("[TOUCH] V4: resetting GT911 via IO expander\n");
-    // GT911 address selection: INT HIGH during reset release → addr 0x14
-    pinMode(GT911_INT_PIN, OUTPUT);
-    digitalWrite(GT911_INT_PIN, HIGH);
-    // Pulse TP_RST LOW via IO expander
-    Set_EXIO(pin_tp_rst(), Low);
-    vTaskDelay(pdMS_TO_TICKS(10));
-    Set_EXIO(pin_tp_rst(), High);
-    vTaskDelay(pdMS_TO_TICKS(10));
-    // Release INT to input — GT911 drives it now
-    digitalWrite(GT911_INT_PIN, LOW);
-    pinMode(GT911_INT_PIN, INPUT);
-    vTaskDelay(pdMS_TO_TICKS(50));
+    printf("[TOUCH] V4: resetting GT911 via IO expander (prefer 0x5D)\n");
+    GT911_V4_ResetAndPreferPrimary();
   }
 
   // Check NVS for a cached GT911 address from a previous successful probe.
@@ -168,19 +233,13 @@ uint8_t Touch_Init(void) {
     prefs.end();
   }
 
-  // Auto-detect GT911 I2C address — probe both (like Waveshare example)
-  bool probed = false;
-  const uint8_t addrs[] = { GT911_ADDR_PRIMARY, GT911_ADDR_SECONDARY };
-  for (int i = 0; i < 2 && !probed; i++) {
-    Wire.beginTransmission(addrs[i]);
-    if (Wire.endTransmission() == 0) {
-      gt911_addr = addrs[i];
-      probed = true;
-      printf("[TOUCH] GT911 found at 0x%02X\n", gt911_addr);
-    }
+  // Auto-detect GT911 I2C address using product-ID read on both addresses.
+  bool probed = is_board_v4() ? (gt911_addr == GT911_ADDR_PRIMARY) : false;
+  if (!probed) {
+    probed = GT911_ProbeAndSelect(true);
   }
   if (!probed) {
-    if (cached_addr == GT911_ADDR_PRIMARY || cached_addr == GT911_ADDR_SECONDARY) {
+    if (!is_board_v4() && (cached_addr == GT911_ADDR_PRIMARY || cached_addr == GT911_ADDR_SECONDARY)) {
       gt911_addr = cached_addr;
       printf("[TOUCH] GT911 not responding, using cached addr 0x%02X\n", gt911_addr);
     } else {
@@ -191,12 +250,16 @@ uint8_t Touch_Init(void) {
 
   // Cache the address so crash-reboots use the right one
   if (probed) {
-    if (prefs.begin("settings", false)) {
-      if (prefs.getUChar("touch_addr", 0) != gt911_addr) {
-        prefs.putUChar("touch_addr", gt911_addr);
-        printf("[TOUCH] Cached touch_addr=0x%02X to NVS\n", gt911_addr);
+    if (!is_board_v4() || gt911_addr == GT911_ADDR_PRIMARY) {
+      if (prefs.begin("settings", false)) {
+        if (prefs.getUChar("touch_addr", 0) != gt911_addr) {
+          prefs.putUChar("touch_addr", gt911_addr);
+          printf("[TOUCH] Cached touch_addr=0x%02X to NVS\n", gt911_addr);
+        }
+        prefs.end();
       }
-      prefs.end();
+    } else {
+      printf("[TOUCH] V4 detected non-primary addr 0x%02X; not caching\n", gt911_addr);
     }
   }
 
@@ -295,7 +358,18 @@ uint8_t Touch_Read_Data(void) {
   uint8_t Over = 0xAB;
   size_t i = 0,num=0;
   if (!I2C_Read_Touch(GT911_ADDR, ESP_LCD_TOUCH_GT911_READ_XY_REG, buf, 1)) {
-    return true; // I2C failed — don't process garbage data
+    if (is_board_v4()) {
+      // Runtime recovery (v4 only): if touch moved address or glitched, re-probe both addresses.
+      if (GT911_ProbeAndSelect(true)) {
+        if (!I2C_Read_Touch(GT911_ADDR, ESP_LCD_TOUCH_GT911_READ_XY_REG, buf, 1)) {
+          return true; // still failing; keep UI responsive and try again next cycle
+        }
+      } else {
+        return true;
+      }
+    } else {
+      return true;
+    }
   }
   if ((buf[0] & 0x80) == 0x00) {                                              
     I2C_Write_Touch(GT911_ADDR, ESP_LCD_TOUCH_GT911_READ_XY_REG, &clear, 1);  // No touch data
