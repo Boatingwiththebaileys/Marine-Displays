@@ -9,6 +9,7 @@ extern lv_obj_t *ui_SettingsPanel;
 extern lv_obj_t *ui_BrightnessSlider;
 extern lv_obj_t *ui_BrightnessLabel;
 extern lv_obj_t *ui_IPLabel;
+extern lv_obj_t *ui_APCredsLabel;
 extern lv_obj_t *ui_RSSILabel;
 extern lv_obj_t *ui_RSSIBar;
 extern lv_obj_t *ui_BackButton;
