@@ -41,14 +41,7 @@ extern "C" void show_fallback_error_screen_if_needed() {
         }
     }
     if (all_default) {
-        Serial.println("[ERROR] All screen configs are default/blank. Showing fallback error screen.");
-        #ifdef LVGL_H
-        lv_obj_t *scr = lv_scr_act();
-        lv_obj_clean(scr);
-        lv_obj_t *label = lv_label_create(scr);
-        lv_label_set_text(label, "ERROR: No valid config loaded.\nCheck SD card or NVS.");
-        lv_obj_align(label, LV_ALIGN_CENTER, 0, 0);
-        #endif
+        Serial.println("[WARN] No valid config loaded. Keeping default UI (logo/settings) so setup remains accessible.");
     }
 }
 
