@@ -234,10 +234,8 @@ uint8_t Touch_Init(void) {
   }
 
   // Auto-detect GT911 I2C address using product-ID read on both addresses.
-  bool probed = is_board_v4() ? (gt911_addr == GT911_ADDR_PRIMARY) : false;
-  if (!probed) {
-    probed = GT911_ProbeAndSelect(true);
-  }
+  // Always probe after reset — forced 0x5D may have failed and GT911 may be at 0x14.
+  bool probed = GT911_ProbeAndSelect(true);
   if (!probed) {
     if (!is_board_v4() && (cached_addr == GT911_ADDR_PRIMARY || cached_addr == GT911_ADDR_SECONDARY)) {
       gt911_addr = cached_addr;
@@ -343,9 +341,9 @@ uint8_t GT911_Touch_Reset(void)
 }
 void GT911_Read_cfg(void) {
   uint8_t buf[4];
-  I2C_Read_Touch(GT911_ADDR, ESP_LCD_TOUCH_GT911_PRODUCT_ID_REG, buf, 3);
+  I2C_Read_Touch(gt911_addr, ESP_LCD_TOUCH_GT911_PRODUCT_ID_REG, buf, 3);
   printf("TouchPad_ID:0x%02x,0x%02x,0x%02x\r\n", buf[0], buf[1], buf[2]);
-  I2C_Read_Touch(GT911_ADDR, ESP_LCD_TOUCH_GT911_CONFIG_REG, buf, 1);
+  I2C_Read_Touch(gt911_addr, ESP_LCD_TOUCH_GT911_CONFIG_REG, buf, 1);
   printf("TouchPad_Config_Version:%d \r\n", buf[0]);
 }
 
@@ -357,11 +355,11 @@ uint8_t Touch_Read_Data(void) {
   uint8_t clear = 0;
   uint8_t Over = 0xAB;
   size_t i = 0,num=0;
-  if (!I2C_Read_Touch(GT911_ADDR, ESP_LCD_TOUCH_GT911_READ_XY_REG, buf, 1)) {
+  if (!I2C_Read_Touch(gt911_addr, ESP_LCD_TOUCH_GT911_READ_XY_REG, buf, 1)) {
     if (is_board_v4()) {
       // Runtime recovery (v4 only): if touch moved address or glitched, re-probe both addresses.
       if (GT911_ProbeAndSelect(true)) {
-        if (!I2C_Read_Touch(GT911_ADDR, ESP_LCD_TOUCH_GT911_READ_XY_REG, buf, 1)) {
+        if (!I2C_Read_Touch(gt911_addr, ESP_LCD_TOUCH_GT911_READ_XY_REG, buf, 1)) {
           return true; // still failing; keep UI responsive and try again next cycle
         }
       } else {
@@ -372,21 +370,21 @@ uint8_t Touch_Read_Data(void) {
     }
   }
   if ((buf[0] & 0x80) == 0x00) {                                              
-    I2C_Write_Touch(GT911_ADDR, ESP_LCD_TOUCH_GT911_READ_XY_REG, &clear, 1);  // No touch data
+    I2C_Write_Touch(gt911_addr, ESP_LCD_TOUCH_GT911_READ_XY_REG, &clear, 1);  // No touch data
   } else {
     /* Count of touched points */
     touch_cnt = buf[0] & 0x0F;
     if (touch_cnt > GT911_LCD_TOUCH_MAX_POINTS || touch_cnt == 0) {
-      I2C_Write_Touch(GT911_ADDR, ESP_LCD_TOUCH_GT911_READ_XY_REG, &clear, 1);
+      I2C_Write_Touch(gt911_addr, ESP_LCD_TOUCH_GT911_READ_XY_REG, &clear, 1);
       return true;
     }
     /* Read all points */
-    if (!I2C_Read_Touch(GT911_ADDR, ESP_LCD_TOUCH_GT911_READ_XY_REG+1, &buf[1], touch_cnt * 8)) {
-      I2C_Write_Touch(GT911_ADDR, ESP_LCD_TOUCH_GT911_READ_XY_REG, &clear, 1);
+    if (!I2C_Read_Touch(gt911_addr, ESP_LCD_TOUCH_GT911_READ_XY_REG+1, &buf[1], touch_cnt * 8)) {
+      I2C_Write_Touch(gt911_addr, ESP_LCD_TOUCH_GT911_READ_XY_REG, &clear, 1);
       return true; // I2C failed — discard partial read
     }
     /* Clear all */
-    I2C_Write_Touch(GT911_ADDR, ESP_LCD_TOUCH_GT911_READ_XY_REG, &clear, 1);
+    I2C_Write_Touch(gt911_addr, ESP_LCD_TOUCH_GT911_READ_XY_REG, &clear, 1);
     // printf(" points=%d \r\n",touch_cnt);
     noInterrupts(); 
 
