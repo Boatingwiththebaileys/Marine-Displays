@@ -42,21 +42,29 @@ static bool GT911_V4_ResetAndPreferPrimary(void)
   uint8_t id[3] = {0};
 
   for (int attempt = 0; attempt < 2; ++attempt) {
-    // Reassert the known-safe CH32 state before touching TP_RST so buzzer and
-    // other outputs stay quiet across warm boots.
+    // Reassert the known-safe CH32 state.
     I2C_Write_EXIO(CH32V003_DIR_REG, CH32V003_DIR_ALL_OUT);
     I2C_Write_EXIO(CH32V003_OUTPUT_REG, CH32V003_OUT_NORMAL);
 
-    // Force the GT911 onto 0x5D by holding INT low through reset release.
+    // 1. Assert RST first — GT911 enters hardware reset and releases INT.
+    //    On warm boot the GT911 drives INT as an output; asserting RST before
+    //    driving INT prevents bus contention and allows us to hold INT LOW.
+    Set_EXIO(pin_tp_rst(), Low);
+    vTaskDelay(pdMS_TO_TICKS(5));  // Let GT911 release INT
+
+    // 2. Drive INT LOW now that GT911 has released it.
     pinMode(GT911_INT_PIN, OUTPUT);
     digitalWrite(GT911_INT_PIN, LOW);
-    Set_EXIO(pin_tp_rst(), Low);
-    vTaskDelay(pdMS_TO_TICKS(attempt == 0 ? 12 : 20));
+    vTaskDelay(pdMS_TO_TICKS(attempt == 0 ? 5 : 10));
+
+    // 3. Release RST — GT911 samples INT (LOW → address 0x5D).
     Set_EXIO(pin_tp_rst(), High);
-    vTaskDelay(pdMS_TO_TICKS(attempt == 0 ? 12 : 20));
+    vTaskDelay(pdMS_TO_TICKS(attempt == 0 ? 12 : 20));  // Hold INT LOW
+
+    // 4. Release INT — GT911 drives it as output.
     digitalWrite(GT911_INT_PIN, LOW);
     pinMode(GT911_INT_PIN, INPUT);
-    vTaskDelay(pdMS_TO_TICKS(attempt == 0 ? 35 : 60));
+    vTaskDelay(pdMS_TO_TICKS(attempt == 0 ? 50 : 80));  // GT911 boot time
 
     if (GT911_ReadProductIdAt(GT911_ADDR_PRIMARY, id)) {
       gt911_addr = GT911_ADDR_PRIMARY;
@@ -275,6 +283,16 @@ uint8_t Touch_Init(void) {
       if (x_max == 0 || y_max == 0 || t_num == 0) {
         printf("[TOUCH] GT911 has no valid config — uploading 480x480 config\n");
         GT911_Upload_Config();
+        // After config upload at 0x14, attempt a recovery reset to 0x5D.
+        // The GT911 factory OTP config (ver 79, loaded at 0x5D) is more complete
+        // than our minimal upload and is known to work reliably.
+        if (is_board_v4() && gt911_addr != GT911_ADDR_PRIMARY) {
+          printf("[TOUCH] Recovery reset to prefer 0x5D after config upload\n");
+          if (!GT911_V4_ResetAndPreferPrimary()) {
+            // Still not at 0x5D — re-probe to confirm actual address
+            GT911_ProbeAndSelect(true);
+          }
+        }
         GT911_Read_cfg(); // re-read to confirm
       }
     }
