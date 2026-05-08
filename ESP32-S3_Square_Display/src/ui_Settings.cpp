@@ -67,15 +67,20 @@ extern "C" void trigger_buzzer_alert() {
 
     if (is_board_v4()) {
       // V4 (CH32V003): BEE_EN = EXIO6/bit6 = PIN_BEE_EN (pin 7).
-      // Direction is 0xFF (all outputs, matching Waveshare).
-      // Toggle BEE_EN via output register only.
-      Set_EXIO(PIN_BEE_EN, High); // buzzer ON
+      // Direction is 0xFF (all outputs). Write full register values directly
+      // (not shadow-based read-modify-write) so shadow desync can't silence us.
+      // Re-assert DIR=0xFF first in case it was corrupted by io_expander library.
+      printf("[BUZ] v4 beep: dir_shadow=0x%02x out_shadow=0x%02x\n",
+             ch32v003_get_dir_shadow(), ch32v003_get_out_shadow());
+      I2C_Write_EXIO(CH32V003_DIR_REG, CH32V003_DIR_ALL_OUT);    // ensure DIR=0xFF
+      I2C_Write_EXIO(CH32V003_OUTPUT_REG, CH32V003_OUT_BUZZER);  // 0x7A: BEE_EN HIGH
       ets_delay_us(200000);
-      Set_EXIO(PIN_BEE_EN, Low);  // buzzer OFF
+      I2C_Write_EXIO(CH32V003_OUTPUT_REG, CH32V003_OUT_NORMAL);  // 0x3A: BEE_EN LOW
       ets_delay_us(100000);
-      Set_EXIO(PIN_BEE_EN, High); // buzzer ON
+      I2C_Write_EXIO(CH32V003_OUTPUT_REG, CH32V003_OUT_BUZZER);  // 0x7A: BEE_EN HIGH
       ets_delay_us(200000);
-      Set_EXIO(PIN_BEE_EN, Low);  // buzzer OFF
+      I2C_Write_EXIO(CH32V003_OUTPUT_REG, CH32V003_OUT_NORMAL);  // 0x3A: BEE_EN LOW
+      printf("[BUZ] v4 beep done\n");
     } else {
       // V3: buzzer on EXIO_PIN6 (bit5)
       Set_EXIOS(Read_EXIOS(exio_output_reg()) & (uint8_t)~(1 << (EXIO_PIN6 - 1)));
