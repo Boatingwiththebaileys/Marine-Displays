@@ -41,30 +41,48 @@ static bool GT911_V4_ResetAndPreferPrimary(void)
 {
   uint8_t id[3] = {0};
 
+  // Fast path: GT911 already at 0x5D and responding.
+  // After a soft reboot the GT911 keeps running at 0x5D; skip the reset.
+  // After LCD_Init the display panel library resets the expander to out=0x38
+  // (TP_RST=LOW, GT911 in hardware reset) so the I2C probe will fail and we
+  // correctly fall through to the full reset sequence.
+  if (GT911_ReadProductIdAt(GT911_ADDR_PRIMARY, id)) {
+    gt911_addr = GT911_ADDR_PRIMARY;
+    printf("[TOUCH] GT911 already at 0x%02X, skipping reset\n", gt911_addr);
+    return true;
+  }
+
+  // Drive INT LOW BEFORE touching the expander output register.
+  // The expander is currently at out=0x38 (TP_RST=LOW from display init).
+  // Writing CH32V003_OUT_NORMAL=0x3A would inadvertently release TP_RST HIGH
+  // while INT is still floating, causing GT911 to latch at 0x14.
+  // By holding INT LOW first, any accidental RST release samples INT=LOW (0x5D).
+  pinMode(GT911_INT_PIN, OUTPUT);
+  digitalWrite(GT911_INT_PIN, LOW);
+
+  const int rst_hold_ms[]  = { 50, 100 };
+  const int post_rst_ms[]  = { 100, 150 };
+  const int boot_wait_ms[] = { 150, 200 };
+
   for (int attempt = 0; attempt < 2; ++attempt) {
-    // Reassert the known-safe CH32 state.
+    // Restore safe CH32V003 direction, but keep TP_RST LOW (bit1=0) so we
+    // don't accidentally release the GT911 before INT is stable.
+    // OUT_NORMAL=0x3A has bit1 SET (TP_RST HIGH); we clear it: 0x3A & ~0x02 = 0x38.
     I2C_Write_EXIO(CH32V003_DIR_REG, CH32V003_DIR_ALL_OUT);
-    I2C_Write_EXIO(CH32V003_OUTPUT_REG, CH32V003_OUT_NORMAL);
+    I2C_Write_EXIO(CH32V003_OUTPUT_REG, CH32V003_OUT_NORMAL & ~0x02u);  // TP_RST LOW
 
-    // 1. Assert RST first — GT911 enters hardware reset and releases INT.
-    //    On warm boot the GT911 drives INT as an output; asserting RST before
-    //    driving INT prevents bus contention and allows us to hold INT LOW.
-    Set_EXIO(pin_tp_rst(), Low);
-    vTaskDelay(pdMS_TO_TICKS(5));  // Let GT911 release INT
-
-    // 2. Drive INT LOW now that GT911 has released it.
-    pinMode(GT911_INT_PIN, OUTPUT);
+    // Hold RST LOW with INT LOW.
     digitalWrite(GT911_INT_PIN, LOW);
-    vTaskDelay(pdMS_TO_TICKS(attempt == 0 ? 5 : 10));
+    vTaskDelay(pdMS_TO_TICKS(rst_hold_ms[attempt]));
 
-    // 3. Release RST — GT911 samples INT (LOW → address 0x5D).
+    // Release RST — GT911 samples INT (LOW → address 0x5D).
     Set_EXIO(pin_tp_rst(), High);
-    vTaskDelay(pdMS_TO_TICKS(attempt == 0 ? 12 : 20));  // Hold INT LOW
+    vTaskDelay(pdMS_TO_TICKS(post_rst_ms[attempt]));  // hold INT LOW
 
-    // 4. Release INT — GT911 drives it as output.
+    // Release INT — GT911 drives it as output.
     digitalWrite(GT911_INT_PIN, LOW);
     pinMode(GT911_INT_PIN, INPUT);
-    vTaskDelay(pdMS_TO_TICKS(attempt == 0 ? 50 : 80));  // GT911 boot time
+    vTaskDelay(pdMS_TO_TICKS(boot_wait_ms[attempt]));  // GT911 full boot
 
     if (GT911_ReadProductIdAt(GT911_ADDR_PRIMARY, id)) {
       gt911_addr = GT911_ADDR_PRIMARY;
@@ -73,8 +91,20 @@ static bool GT911_V4_ResetAndPreferPrimary(void)
     }
 
     printf("[TOUCH] V4 force-0x5D attempt %d did not latch\n", attempt + 1);
+    if (attempt + 1 < 2) {
+      // Reassert RST LOW and INT LOW before the next attempt.
+      Set_EXIO(pin_tp_rst(), Low);
+      pinMode(GT911_INT_PIN, OUTPUT);
+      digitalWrite(GT911_INT_PIN, LOW);
+    }
   }
 
+  // Both attempts failed. MUST release TP_RST so GT911 can boot normally
+  // (likely at 0x14 since INT is pulled HIGH on v4). Leaving RST LOW would
+  // put GT911 in permanent hardware reset, breaking all subsequent probes.
+  Set_EXIO(pin_tp_rst(), High);
+  vTaskDelay(pdMS_TO_TICKS(200));   // wait for GT911 to boot at its default address
+  pinMode(GT911_INT_PIN, INPUT);
   return false;
 }
 
