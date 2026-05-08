@@ -239,7 +239,7 @@ bool apply_screen_visuals_for_one(int s) {
             dual_number_display_create(s,
                 screen_configs[s].dual_top_font_size, screen_configs[s].dual_top_font_color,
                 screen_configs[s].dual_bottom_font_size, screen_configs[s].dual_bottom_font_color,
-                screen_configs[s].number_bg_color);
+                (strcmp(screen_configs[s].background_path, "Custom Color") == 0) ? screen_configs[s].number_bg_color : "");
             Serial.printf("[APPLY_ONE] s=%d DUAL created, invalidating screen\n", s);
             lv_obj_invalidate(get_screen_obj(s));
             any = true;
@@ -263,7 +263,7 @@ bool apply_screen_visuals_for_one(int s) {
                 screen_configs[s].quad_tr_font_size, screen_configs[s].quad_tr_font_color,
                 screen_configs[s].quad_bl_font_size, screen_configs[s].quad_bl_font_color,
                 screen_configs[s].quad_br_font_size, screen_configs[s].quad_br_font_color,
-                screen_configs[s].number_bg_color);
+                (strcmp(screen_configs[s].background_path, "Custom Color") == 0) ? screen_configs[s].number_bg_color : "");
             Serial.printf("[APPLY_ONE] s=%d QUAD created, invalidating screen\n", s);
             lv_obj_invalidate(get_screen_obj(s));
             any = true;

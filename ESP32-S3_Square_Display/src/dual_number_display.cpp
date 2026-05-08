@@ -76,6 +76,9 @@ void dual_number_display_create(int screen_num,
     // Clean up existing display if any
     dual_number_display_destroy(screen_num);
     
+    // Use custom bg colour, or transparent (default = show screen background image)
+    bool use_custom_bg = (bg_color && bg_color[0] != '\0');
+
     // Create container for this dual display on the correct screen
     dual_containers[screen_num] = lv_obj_create(screen);
     lv_obj_set_size(dual_containers[screen_num], 480, 480);
@@ -84,8 +87,8 @@ void dual_number_display_create(int screen_num,
     lv_obj_clear_flag(dual_containers[screen_num], LV_OBJ_FLAG_CLICKABLE);  // Allow swipe through
     // Remove padding and set background to match panel to prevent white edges
     lv_obj_set_style_pad_all(dual_containers[screen_num], 0, 0);
-    lv_obj_set_style_bg_color(dual_containers[screen_num], parse_hex_color(bg_color), 0);
-    lv_obj_set_style_bg_opa(dual_containers[screen_num], LV_OPA_COVER, 0);
+    lv_obj_set_style_bg_color(dual_containers[screen_num], use_custom_bg ? parse_hex_color(bg_color) : lv_color_black(), 0);
+    lv_obj_set_style_bg_opa(dual_containers[screen_num], use_custom_bg ? LV_OPA_COVER : LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(dual_containers[screen_num], 0, 0);
     lv_obj_set_style_radius(dual_containers[screen_num], 0, 0);
     
@@ -93,8 +96,8 @@ void dual_number_display_create(int screen_num,
     dual_bg_panels[screen_num] = lv_obj_create(dual_containers[screen_num]);
     lv_obj_set_size(dual_bg_panels[screen_num], 480, 480);
     lv_obj_align(dual_bg_panels[screen_num], LV_ALIGN_CENTER, 0, 0);
-    lv_obj_set_style_bg_color(dual_bg_panels[screen_num], parse_hex_color(bg_color), 0);
-    lv_obj_set_style_bg_opa(dual_bg_panels[screen_num], LV_OPA_COVER, 0);
+    lv_obj_set_style_bg_color(dual_bg_panels[screen_num], use_custom_bg ? parse_hex_color(bg_color) : lv_color_black(), 0);
+    lv_obj_set_style_bg_opa(dual_bg_panels[screen_num], use_custom_bg ? LV_OPA_COVER : LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(dual_bg_panels[screen_num], 0, 0);
     lv_obj_set_style_pad_all(dual_bg_panels[screen_num], 0, 0);
     lv_obj_clear_flag(dual_bg_panels[screen_num], LV_OBJ_FLAG_CLICKABLE);  // Allow swipe through
@@ -122,7 +125,8 @@ void dual_number_display_create(int screen_num,
     lv_obj_set_style_transform_pivot_x(dual_top_labels[screen_num], LV_PCT(50), 0);
     lv_obj_set_style_transform_pivot_y(dual_top_labels[screen_num], LV_PCT(50), 0);
     lv_obj_set_style_transform_zoom(dual_top_labels[screen_num], get_zoom_for_size(top_font_size), 0);
-    lv_obj_align(dual_top_labels[screen_num], LV_ALIGN_TOP_MID, 0, 100);
+    lv_obj_align(dual_top_labels[screen_num], LV_ALIGN_TOP_MID, 0,
+        120 - (int16_t)(get_font_for_size(top_font_size)->line_height / 2));
     lv_obj_add_flag(dual_top_labels[screen_num], LV_OBJ_FLAG_IGNORE_LAYOUT);
     
     // Top unit label (bottom-right of top half)
@@ -158,7 +162,8 @@ void dual_number_display_create(int screen_num,
     lv_obj_set_style_transform_pivot_x(dual_bottom_labels[screen_num], LV_PCT(50), 0);
     lv_obj_set_style_transform_pivot_y(dual_bottom_labels[screen_num], LV_PCT(50), 0);
     lv_obj_set_style_transform_zoom(dual_bottom_labels[screen_num], get_zoom_for_size(bottom_font_size), 0);
-    lv_obj_align(dual_bottom_labels[screen_num], LV_ALIGN_TOP_MID, 0, 340);
+    lv_obj_align(dual_bottom_labels[screen_num], LV_ALIGN_TOP_MID, 0,
+        360 - (int16_t)(get_font_for_size(bottom_font_size)->line_height / 2));
     lv_obj_add_flag(dual_bottom_labels[screen_num], LV_OBJ_FLAG_IGNORE_LAYOUT);
     
     // Bottom unit label (bottom-right of bottom half)
@@ -193,7 +198,11 @@ void dual_number_display_update_top(int screen_num, float value, const char* uni
     bool needs_update = false;
     if (strcmp(text, prev_dual_top_text[screen_num]) != 0) {
         lv_label_set_text(dual_top_labels[screen_num], text);
-        lv_obj_align(dual_top_labels[screen_num], LV_ALIGN_TOP_MID, 0, 120);
+        {
+            const lv_font_t* _f = lv_obj_get_style_text_font(dual_top_labels[screen_num], 0);
+            lv_obj_align(dual_top_labels[screen_num], LV_ALIGN_TOP_MID, 0,
+                120 - (int16_t)(_f->line_height / 2));
+        }
         strncpy(prev_dual_top_text[screen_num], text, sizeof(prev_dual_top_text[screen_num]) - 1);
         needs_update = true;
     }
@@ -223,7 +232,11 @@ void dual_number_display_update_bottom(int screen_num, float value, const char* 
     bool needs_update = false;
     if (strcmp(text, prev_dual_bottom_text[screen_num]) != 0) {
         lv_label_set_text(dual_bottom_labels[screen_num], text);
-        lv_obj_align(dual_bottom_labels[screen_num], LV_ALIGN_TOP_MID, 0, 360);
+        {
+            const lv_font_t* _f = lv_obj_get_style_text_font(dual_bottom_labels[screen_num], 0);
+            lv_obj_align(dual_bottom_labels[screen_num], LV_ALIGN_TOP_MID, 0,
+                360 - (int16_t)(_f->line_height / 2));
+        }
         strncpy(prev_dual_bottom_text[screen_num], text, sizeof(prev_dual_bottom_text[screen_num]) - 1);
         needs_update = true;
     }

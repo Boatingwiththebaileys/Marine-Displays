@@ -93,6 +93,9 @@ void quad_number_display_create(int screen_num,
     // Clean up existing display if any
     quad_number_display_destroy(screen_num);
     
+    // Use custom bg colour, or transparent (default = show screen background image)
+    bool use_custom_bg = (bg_color && bg_color[0] != '\0');
+
     // Create container for this quad display on the correct screen
     quad_containers[screen_num] = lv_obj_create(screen);
     lv_obj_set_size(quad_containers[screen_num], 480, 480);
@@ -101,8 +104,8 @@ void quad_number_display_create(int screen_num,
     lv_obj_clear_flag(quad_containers[screen_num], LV_OBJ_FLAG_CLICKABLE);  // Allow swipe through
     // Remove padding and set background to match panel to prevent white edges
     lv_obj_set_style_pad_all(quad_containers[screen_num], 0, 0);
-    lv_obj_set_style_bg_color(quad_containers[screen_num], parse_hex_color(bg_color), 0);
-    lv_obj_set_style_bg_opa(quad_containers[screen_num], LV_OPA_COVER, 0);
+    lv_obj_set_style_bg_color(quad_containers[screen_num], use_custom_bg ? parse_hex_color(bg_color) : lv_color_black(), 0);
+    lv_obj_set_style_bg_opa(quad_containers[screen_num], use_custom_bg ? LV_OPA_COVER : LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(quad_containers[screen_num], 0, 0);
     lv_obj_set_style_radius(quad_containers[screen_num], 0, 0);
     
@@ -110,8 +113,8 @@ void quad_number_display_create(int screen_num,
     quad_bg_panels[screen_num] = lv_obj_create(quad_containers[screen_num]);
     lv_obj_set_size(quad_bg_panels[screen_num], 480, 480);
     lv_obj_align(quad_bg_panels[screen_num], LV_ALIGN_CENTER, 0, 0);
-    lv_obj_set_style_bg_color(quad_bg_panels[screen_num], parse_hex_color(bg_color), 0);
-    lv_obj_set_style_bg_opa(quad_bg_panels[screen_num], LV_OPA_COVER, 0);
+    lv_obj_set_style_bg_color(quad_bg_panels[screen_num], use_custom_bg ? parse_hex_color(bg_color) : lv_color_black(), 0);
+    lv_obj_set_style_bg_opa(quad_bg_panels[screen_num], use_custom_bg ? LV_OPA_COVER : LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(quad_bg_panels[screen_num], 0, 0);
     lv_obj_set_style_pad_all(quad_bg_panels[screen_num], 0, 0);
     lv_obj_clear_flag(quad_bg_panels[screen_num], LV_OBJ_FLAG_CLICKABLE);  // Allow swipe through
