@@ -966,12 +966,30 @@ void setup() {
     detect_expander_address();
 
     if (is_board_v4()) {
-      // V4 (CH32V003): Match Waveshare official example exactly.
-      // Direction 0xFF: ALL pins output.
-      // Output 0x3A: TP_RST=HIGH, LCD_RST=HIGH, SYS_EN=HIGH, SD_CS=HIGH,
-      //              BEE_EN=LOW (buzzer off), EXIO0/2/7=LOW.
+      // V4 (CH32V003): Write OUTPUT before DIR to prevent buzzer glitch.
+      // CH32V003 powers on with output latch=0xFF (all HIGH). Writing DIR=0xFF
+      // first would momentarily drive BEE_EN HIGH (buzzer on) before OUTPUT=0x3A
+      // silences it. Writing OUTPUT first ensures safe levels before any pin
+      // becomes an output.
+      //
+      // Keep TP_RST LOW during init (OUT_NORMAL & ~0x02 = 0x38) so GT911 is held
+      // in reset while we prepare. GT911 address selection follows below.
+      I2C_Write_EXIO(CH32V003_OUTPUT_REG, CH32V003_OUT_NORMAL & ~0x02u); // TP_RST LOW
       I2C_Write_EXIO(CH32V003_DIR_REG, CH32V003_DIR_ALL_OUT);
-      I2C_Write_EXIO(CH32V003_OUTPUT_REG, CH32V003_OUT_NORMAL);
+
+      // GT911 address selection: with CH32V003 DIR=0xFF and OUTPUT bit2=0,
+      // EXIO2 (TP_INT) is driven LOW by CH32V003. We also drive GPIO16 LOW to
+      // guarantee INT is LOW even if CH32V003 state is corrupted (e.g. after
+      // esptool upload partially corrupted the DIR register via I2C bus recovery).
+      // TP_RST is already LOW from the write above — release it HIGH now with
+      // INT guaranteed LOW → GT911 latches address 0x5D.
+      pinMode(GT911_INT_PIN, OUTPUT);
+      digitalWrite(GT911_INT_PIN, LOW);
+      delay(50);                                                  // hold RST LOW
+      I2C_Write_EXIO(CH32V003_OUTPUT_REG, CH32V003_OUT_NORMAL);  // TP_RST HIGH, INT via EXIO2 still LOW
+      delay(120);                                                 // GT911 boots at 0x5D
+      pinMode(GT911_INT_PIN, INPUT);                             // release GPIO16; EXIO2 still drives INT
+      ets_printf("[GT911] address pre-selected 0x5D via RST sequence\r\n");
     } else {
       // V3 (TCA9554): Write output latch before switching to output mode
       Set_EXIOS(0xDF);             // bit5=0 (PIN6 LOW on V3)

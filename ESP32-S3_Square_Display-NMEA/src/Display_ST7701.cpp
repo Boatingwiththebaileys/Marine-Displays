@@ -569,10 +569,15 @@ static void LCD_FillSolid(uint16_t color565)
 }
 
 void LCD_Init() {
-  // Ensure expander-controlled backlight is off briefly to emulate a power-cycle
-  Mode_EXIO(EXIO_PIN2, 0); // ensure BL pin is output
-  Set_EXIO(EXIO_PIN2, Low);
-  vTaskDelay(pdMS_TO_TICKS(50));
+  // Ensure expander-controlled backlight is off briefly to emulate a power-cycle.
+  // EXIO_PIN2 = bit1: on v3 this is the BL pin; on v4 bit1 = TP_RST (GT911 reset).
+  // Only do this on v3 — touching it on v4 puts GT911 into hardware reset and
+  // corrupts the CH32V003 shadow register before Touch_Init runs.
+  if (!is_board_v4()) {
+    Mode_EXIO(EXIO_PIN2, 0); // ensure BL pin is output
+    Set_EXIO(EXIO_PIN2, Low);
+    vTaskDelay(pdMS_TO_TICKS(50));
+  }
 
   ST7701_Reset();
   ST7701_Init();

@@ -313,16 +313,10 @@ uint8_t Touch_Init(void) {
       if (x_max == 0 || y_max == 0 || t_num == 0) {
         printf("[TOUCH] GT911 has no valid config — uploading 480x480 config\n");
         GT911_Upload_Config();
-        // After config upload at 0x14, attempt a recovery reset to 0x5D.
-        // The GT911 factory OTP config (ver 79, loaded at 0x5D) is more complete
-        // than our minimal upload and is known to work reliably.
-        if (is_board_v4() && gt911_addr != GT911_ADDR_PRIMARY) {
-          printf("[TOUCH] Recovery reset to prefer 0x5D after config upload\n");
-          if (!GT911_V4_ResetAndPreferPrimary()) {
-            // Still not at 0x5D — re-probe to confirm actual address
-            GT911_ProbeAndSelect(true);
-          }
-        }
+        // Do NOT attempt a recovery reset here: GT911_V4_ResetAndPreferPrimary()
+        // resets the hardware and wipes the SRAM config we just uploaded.
+        // GT911 address selection was already done in setup() before LCD_Init,
+        // so we stay at whichever address was probed above.
         GT911_Read_cfg(); // re-read to confirm
       }
     }
