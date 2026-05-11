@@ -134,6 +134,15 @@ enum N2kField : uint16_t {
     N2K_ATMOSPHERIC_PRESSURE   = 75,
     // PGN 130314 — Actual Pressure
     N2K_BAROMETRIC_PRESSURE    = 76,
+    // PGN 130316 — Temperature Extended Range
+    N2K_FRIDGE_TEMPERATURE     = 77,
+    N2K_FREEZER_TEMPERATURE    = 78,
+    N2K_INSIDE_TEMPERATURE     = 79,   // source 2: InsideTemperature
+    N2K_CABIN_TEMPERATURE      = 85,   // source 4: MainCabinTemperature
+    N2K_HEATING_TEMPERATURE    = 86,   // source 8: HeatingSystemTemperature
+    N2K_DEWPOINT_TEMPERATURE   = 87,   // source 9: DewPointTemperature
+    N2K_WINDCHILL_APPARENT     = 88,   // source 10: ApparentWindChillTemperature
+    N2K_WINDCHILL_THEORETICAL  = 89,   // source 11: TheoreticalWindChillTemperature
 
     // ── Attitude (PGN 127257) ────────────────────────────────────────
     N2K_PITCH                  = 130,

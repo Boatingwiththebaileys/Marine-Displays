@@ -112,6 +112,14 @@ const char* n2k_field_label(N2kField f) {
         case N2K_OUTSIDE_HUMIDITY:    return "Humidity";
         case N2K_ATMOSPHERIC_PRESSURE:return "Atmospheric Pressure";
         case N2K_BAROMETRIC_PRESSURE: return "Barometric Pressure";
+        case N2K_FRIDGE_TEMPERATURE:       return "Fridge Temperature";
+        case N2K_FREEZER_TEMPERATURE:      return "Freezer Temperature";
+        case N2K_INSIDE_TEMPERATURE:       return "Inside Temperature";
+        case N2K_CABIN_TEMPERATURE:        return "Cabin Temperature";
+        case N2K_HEATING_TEMPERATURE:      return "Heating System Temp";
+        case N2K_DEWPOINT_TEMPERATURE:     return "Dew Point";
+        case N2K_WINDCHILL_APPARENT:       return "Wind Chill (Apparent)";
+        case N2K_WINDCHILL_THEORETICAL:    return "Wind Chill (Theoretical)";
         // Attitude
         case N2K_PITCH:               return "Pitch";
         case N2K_ROLL:                return "Roll";
@@ -219,6 +227,14 @@ const char* n2k_field_unit(N2kField f) {
         case N2K_OUTSIDE_HUMIDITY:    return "ratio";
         case N2K_ATMOSPHERIC_PRESSURE:return "Pa";
         case N2K_BAROMETRIC_PRESSURE: return "Pa";
+        case N2K_FRIDGE_TEMPERATURE:       return "K";
+        case N2K_FREEZER_TEMPERATURE:      return "K";
+        case N2K_INSIDE_TEMPERATURE:       return "K";
+        case N2K_CABIN_TEMPERATURE:        return "K";
+        case N2K_HEATING_TEMPERATURE:      return "K";
+        case N2K_DEWPOINT_TEMPERATURE:     return "K";
+        case N2K_WINDCHILL_APPARENT:       return "K";
+        case N2K_WINDCHILL_THEORETICAL:    return "K";
         // Attitude
         case N2K_PITCH:               return "rad";
         case N2K_ROLL:                return "rad";
@@ -315,6 +331,19 @@ N2kField n2k_field_from_path(const String& path) {
     if (path.indexOf("humidity") >= 0)                   return N2K_OUTSIDE_HUMIDITY;
     if (path.indexOf("atmosphericPressure") >= 0 ||
         path.indexOf("barometric") >= 0)                 return N2K_ATMOSPHERIC_PRESSURE;
+    if (path.indexOf("fridge") >= 0 ||
+        path.indexOf("refriger") >= 0)                   return N2K_FRIDGE_TEMPERATURE;
+    if (path.indexOf("freezer") >= 0)                    return N2K_FREEZER_TEMPERATURE;
+    if (path.indexOf("mainCabin") >= 0 ||
+        path.indexOf("cabin") >= 0)                      return N2K_CABIN_TEMPERATURE;
+    if (path.indexOf("heatingSystem") >= 0 ||
+        path.indexOf("heating") >= 0)                    return N2K_HEATING_TEMPERATURE;
+    if (path.indexOf("dewPoint") >= 0 ||
+        path.indexOf("dewpoint") >= 0)                   return N2K_DEWPOINT_TEMPERATURE;
+    if (path.indexOf("windChillApparent") >= 0)          return N2K_WINDCHILL_APPARENT;
+    if (path.indexOf("windChill") >= 0)                  return N2K_WINDCHILL_THEORETICAL;
+    if (path.indexOf("inside") >= 0 &&
+        path.indexOf("temperature") >= 0)                return N2K_INSIDE_TEMPERATURE;
     if (path.indexOf("temperature") >= 0)                return N2K_TEMPERATURE;
     // Attitude
     if (path.indexOf("pitch") >= 0)                      return N2K_PITCH;
@@ -726,6 +755,30 @@ static void handle_pressure(const tN2kMsg& msg) {              // PGN 130314
     }
 }
 
+static void handle_temperature_ext(const tN2kMsg& msg) {       // PGN 130316
+    unsigned char sid, instance;
+    tN2kTempSource source;
+    double actual, setTemp;
+    if (ParseN2kTemperatureExt(msg, sid, instance, source, actual, setTemp)) {
+        if (!N2kIsNA(actual)) {
+            switch (source) {
+                case N2kts_SeaTemperature:                  route_value(N2K_SEA_TEMPERATURE,         (float)actual); break;
+                case N2kts_OutsideTemperature:              route_value(N2K_OUTSIDE_TEMP,            (float)actual); break;
+                case N2kts_InsideTemperature:               route_value(N2K_INSIDE_TEMPERATURE,      (float)actual); break;
+                case N2kts_MainCabinTemperature:            route_value(N2K_CABIN_TEMPERATURE,       (float)actual); break;
+                case N2kts_RefridgerationTemperature:       route_value(N2K_FRIDGE_TEMPERATURE,      (float)actual); break;
+                case N2kts_HeatingSystemTemperature:        route_value(N2K_HEATING_TEMPERATURE,     (float)actual); break;
+                case N2kts_DewPointTemperature:             route_value(N2K_DEWPOINT_TEMPERATURE,    (float)actual); break;
+                case N2kts_ApparentWindChillTemperature:    route_value(N2K_WINDCHILL_APPARENT,      (float)actual); break;
+                case N2kts_TheoreticalWindChillTemperature: route_value(N2K_WINDCHILL_THEORETICAL,   (float)actual); break;
+                case N2kts_FreezerTemperature:              route_value(N2K_FREEZER_TEMPERATURE,     (float)actual); break;
+                case N2kts_ExhaustGasTemperature:           route_value(N2K_EXHAUST_TEMPERATURE,     (float)actual); break;
+                default:                                    route_value(N2K_TEMPERATURE,             (float)actual); break;
+            }
+        }
+    }
+}
+
 static void handle_trim_tab(const tN2kMsg& msg) {              // PGN 130576
     int8_t port, stbd;
     if (ParseN2kTrimTab(msg, port, stbd)) {
@@ -880,6 +933,7 @@ static void handle_n2k_msg(const tN2kMsg& msg) {
         case 130311: handle_env_params(msg);        break;
         case 130312: handle_temperature(msg);       break;
         case 130314: handle_pressure(msg);          break;
+        case 130316: handle_temperature_ext(msg);   break;
         case 130576: handle_trim_tab(msg);          break;
         default: break;
     }
