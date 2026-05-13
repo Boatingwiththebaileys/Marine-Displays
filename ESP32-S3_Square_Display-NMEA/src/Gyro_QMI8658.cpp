@@ -26,13 +26,17 @@ bool imu_is_available(void) { return g_imu_available; }
 void QMI8658_Init(void)
 {
     uint8_t buf[1];
-    Device_addr = QMI8658_L_SLAVE_ADDRESS;     
+    // Try primary address (0x6B) first, then secondary (0x6A) for V4 boards
+    Device_addr = QMI8658_L_SLAVE_ADDRESS;
     if (I2C_Read(Device_addr, QMI8658_REVISION_ID, buf, 1) != 0) {
-        printf("[IMU] QMI8658 not found at 0x%02X — IMU disabled\r\n", Device_addr);
-        g_imu_available = false;
-        return;
+        Device_addr = QMI8658_H_SLAVE_ADDRESS;
+        if (I2C_Read(Device_addr, QMI8658_REVISION_ID, buf, 1) != 0) {
+            printf("[IMU] QMI8658 not found at 0x6B or 0x6A — IMU disabled\r\n");
+            g_imu_available = false;
+            return;
+        }
     }
-    printf("QMI8658 Device ID: %x\r\n",buf[0]);    // Get chip id
+    printf("[IMU] QMI8658 found at 0x%02X, Device ID: %x\r\n", Device_addr, buf[0]);
     g_imu_available = true;
     setState(sensor_running);             
 

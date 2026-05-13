@@ -20,8 +20,11 @@ void attitude_display_destroy(int screen_num);
 // Call this once per loop iteration (50 Hz is fine).
 void attitude_imu_read(float *pitch_deg, float *roll_deg, float *yaw_rate_dps);
 
-// Store current accelerometer reading as "level" offset.  Persisted to NVS.
+// Store the current N2K pitch/roll as the "level" reference offset.  Persisted to NVS.
 void attitude_calibrate_level(void);
+
+// Clear calibration offsets back to zero (returns to raw N2K data).  Persisted to NVS.
+void attitude_clear_calibration(void);
 
 // Load calibration offsets from NVS (called once at startup).
 void attitude_load_calibration(void);

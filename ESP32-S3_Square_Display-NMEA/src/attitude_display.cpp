@@ -1,11 +1,10 @@
 // attitude_display.cpp — Artificial horizon / attitude indicator
-// Uses onboard QMI8658 IMU when available (V4 boards),
-// falls back to NMEA 2000 PGN 127257 attitude data (V3 boards).
-// "Set Level" calibration stores current orientation as zero reference.
+// Uses NMEA 2000 PGN 127257 attitude data (heel/pitch sensor or MFD).
+// "Set Level" stores the current reading as a zero reference offset.
+// "Clear Level" resets offsets so raw N2K data is used directly.
 
 #include "attitude_display.h"
 #include "screen_config_c_api.h"
-#include "Gyro_QMI8658.h"
 #include "signalk_config.h"
 #include "nmea2000_config.h"
 #include <math.h>
@@ -38,12 +37,6 @@
 static float g_cal_pitch = 0.0f;   // offset in degrees
 static float g_cal_roll  = 0.0f;
 
-// ── Low-pass filter state (accelerometer only — no gyro drift) ───────
-static float g_filt_pitch = 0.0f;
-static float g_filt_roll  = 0.0f;
-static bool  g_filt_init  = false;
-static uint32_t g_dbg_count = 0;
-#define LPF_ALPHA 0.08f   // smoothing factor: lower = smoother, higher = faster response
 
 // ── Per-screen LVGL objects ──────────────────────────────────────────
 static lv_obj_t* a_bg[NUM_SCREENS];         // background panel
@@ -101,103 +94,43 @@ void attitude_load_calibration(void) {
 }
 
 void attitude_calibrate_level(void) {
-    // Read accelerometer right now
-    getAccelerometer();
-    float ax = Accel.x, ay = Accel.y, az = Accel.z;
+    // Snapshot the current N2K pitch/roll as the "level" reference
+    float n2k_pitch = get_sensor_value_by_path(String((int)N2K_PITCH));  // radians
+    float n2k_roll  = get_sensor_value_by_path(String((int)N2K_ROLL));   // radians
+    g_cal_pitch = isnan(n2k_pitch) ? 0.0f : n2k_pitch * 180.0f / M_PI;
+    g_cal_roll  = isnan(n2k_roll)  ? 0.0f : n2k_roll  * 180.0f / M_PI;
 
-    // Raw pitch/roll from gravity
-    float raw_pitch = atan2f(-ax, sqrtf(ay * ay + az * az)) * 180.0f / M_PI;
-    float raw_roll  = atan2f(ay, az) * 180.0f / M_PI;
-
-    g_cal_pitch = raw_pitch;
-    g_cal_roll  = raw_roll;
-
-    // Reset filter after calibration
-    g_filt_pitch = 0.0f;
-    g_filt_roll  = 0.0f;
-    g_filt_init  = false;
-
-    // Persist to NVS
     Preferences prefs;
     if (prefs.begin("imu_cal", false)) {
         prefs.putFloat("pitch", g_cal_pitch);
         prefs.putFloat("roll",  g_cal_roll);
         prefs.end();
     }
-    Serial.printf("[IMU] Level set: pitch_offset=%.2f roll_offset=%.2f\n", g_cal_pitch, g_cal_roll);
+    Serial.printf("[ATTITUDE] Level set: pitch_offset=%.2f roll_offset=%.2f\n", g_cal_pitch, g_cal_roll);
+}
+
+void attitude_clear_calibration(void) {
+    g_cal_pitch = 0.0f;
+    g_cal_roll  = 0.0f;
+
+    Preferences prefs;
+    if (prefs.begin("imu_cal", false)) {
+        prefs.putFloat("pitch", 0.0f);
+        prefs.putFloat("roll",  0.0f);
+        prefs.end();
+    }
+    Serial.println("[ATTITUDE] Level cleared — using raw N2K data");
 }
 
 void attitude_imu_read(float *pitch_deg, float *roll_deg, float *yaw_rate_dps) {
-    // If onboard IMU not available, use NMEA 2000 PGN 127257 data
-    if (!imu_is_available()) {
-        float n2k_pitch = get_sensor_value_by_path(String((int)N2K_PITCH));  // radians
-        float n2k_roll  = get_sensor_value_by_path(String((int)N2K_ROLL));   // radians
-        float n2k_yaw   = get_sensor_value_by_path(String((int)N2K_YAW));    // radians
-        *pitch_deg    = isnan(n2k_pitch) ? 0.0f : n2k_pitch * 180.0f / M_PI;
-        *roll_deg     = isnan(n2k_roll)  ? 0.0f : n2k_roll  * 180.0f / M_PI;
-        *yaw_rate_dps = isnan(n2k_yaw)   ? 0.0f : n2k_yaw   * 180.0f / M_PI;
-        return;
-    }
-
-    // Rate-limit I2C reads to avoid bus contention with touch/RTC/IO expander
-    static uint32_t last_read_ms = 0;
-    uint32_t now_ms = millis();
-    if (now_ms - last_read_ms < 200) {
-        // Return cached filtered values
-        *pitch_deg = g_filt_pitch;
-        *roll_deg  = g_filt_roll;
-        *yaw_rate_dps = 0.0f;
-        return;
-    }
-    last_read_ms = now_ms;
-
-    // Read accelerometer — skip this cycle if I2C fails
-    if (!getAccelerometer()) {
-        *pitch_deg = g_filt_pitch;
-        *roll_deg  = g_filt_roll;
-        *yaw_rate_dps = 0.0f;
-        return;
-    }
-    getGyroscope();  // gyro failure is non-critical (only used for ROT display)
-
-    float ax = Accel.x, ay = Accel.y, az = Accel.z;
-
-    // Sanity check: accelerometer magnitude should be ~1g
-    // Reject readings that are way off (I2C glitch / bus contention)
-    float mag = sqrtf(ax * ax + ay * ay + az * az);
-    if (mag < 0.5f || mag > 2.0f || isnan(mag)) {
-        // Bad reading — keep previous filtered values
-        if (g_dbg_count++ % 10 == 0)
-            Serial.printf("[IMU] BAD accel mag=%.3f (ax=%.3f ay=%.3f az=%.3f)\n", mag, ax, ay, az);
-        *pitch_deg = g_filt_pitch;
-        *roll_deg  = g_filt_roll;
-        *yaw_rate_dps = 0.0f;
-        return;
-    }
-
-    // Pitch/roll from accelerometer (gravity) with calibration offset
-    float acc_pitch = atan2f(-ax, sqrtf(ay * ay + az * az)) * 180.0f / M_PI - g_cal_pitch;
-    float acc_roll  = atan2f(ay, az) * 180.0f / M_PI - g_cal_roll;
-
-    // Debug: print every 10th successful reading (~1x/sec at 5Hz)
-    if (g_dbg_count++ % 10 == 0) {
-        Serial.printf("[IMU] ax=%.3f ay=%.3f az=%.3f mag=%.3f -> raw P=%.1f R=%.1f -> filt P=%.1f R=%.1f\n",
-                      ax, ay, az, mag, acc_pitch, acc_roll, g_filt_pitch, g_filt_roll);
-    }
-
-    // Simple low-pass filter on accelerometer — no gyro integration, no drift
-    if (!g_filt_init) {
-        g_filt_pitch = acc_pitch;
-        g_filt_roll  = acc_roll;
-        g_filt_init  = true;
-    } else {
-        g_filt_pitch += LPF_ALPHA * (acc_pitch - g_filt_pitch);
-        g_filt_roll  += LPF_ALPHA * (acc_roll  - g_filt_roll);
-    }
-
-    *pitch_deg = g_filt_pitch;
-    *roll_deg  = g_filt_roll;
-    *yaw_rate_dps = Gyro.z;  // gyro only used for rate-of-turn display
+    // Read attitude from NMEA 2000 PGN 127257 (heel/pitch sensor or autopilot/MFD)
+    float n2k_pitch = get_sensor_value_by_path(String((int)N2K_PITCH));  // radians
+    float n2k_roll  = get_sensor_value_by_path(String((int)N2K_ROLL));   // radians
+    float n2k_yaw   = get_sensor_value_by_path(String((int)N2K_YAW));    // radians
+    // Apply calibration offsets (set via "Set Level", cleared via "Clear Level")
+    *pitch_deg    = (isnan(n2k_pitch) ? 0.0f : n2k_pitch * 180.0f / M_PI) - g_cal_pitch;
+    *roll_deg     = (isnan(n2k_roll)  ? 0.0f : n2k_roll  * 180.0f / M_PI) - g_cal_roll;
+    *yaw_rate_dps = isnan(n2k_yaw)    ? 0.0f : n2k_yaw   * 180.0f / M_PI;
 }
 
 // ── LVGL display creation ────────────────────────────────────────────

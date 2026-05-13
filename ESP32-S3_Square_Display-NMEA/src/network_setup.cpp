@@ -1481,9 +1481,12 @@ void handle_gauges_screen() {
     // ── Attitude Display config ───────────────────────────────────────
     html += "<div id='attitudeconfig_" + String(s) + "' style='display:" + String(screen_configs[s].display_type == 9 ? "block" : "none") + ";'>";
     html += "<h4>Attitude Indicator Settings</h4>";
-    html += "<p style='color:#aaa;'>Uses the onboard IMU (QMI8658) accelerometer and gyroscope.</p>";
-    html += "<p style='color:#aaa;'>Set the display level when the boat is on an even keel.</p>";
-    html += "<div style='margin-bottom:8px;'><button type='button' style='padding:8px 20px;font-size:16px;' onclick=\"fetch('/api/imu_calibrate',{method:'POST'}).then(r=>r.text()).then(t=>alert(t))\">Set Level</button></div>";
+    html += "<p style='color:#aaa;'>Uses NMEA 2000 PGN 127257 attitude data (heel/pitch sensor, autopilot, or MFD).</p>";
+    html += "<p style='color:#aaa;'><b>Set Level</b> &mdash; snaps the current reading as the zero reference. <b>Clear Level</b> &mdash; removes the offset and uses raw N2K data.</p>";
+    html += "<div style='display:flex;gap:12px;margin-bottom:8px;'>";
+    html += "<button type='button' style='padding:8px 20px;font-size:16px;' onclick=\"fetch('/api/imu_calibrate',{method:'POST'}).then(r=>r.text()).then(t=>alert(t))\">Set Level</button>";
+    html += "<button type='button' style='padding:8px 20px;font-size:16px;' onclick=\"fetch('/api/imu_clear',{method:'POST'}).then(r=>r.text()).then(t=>alert(t))\">Clear Level</button>";
+    html += "</div>";
     html += "</div>"; // close attitudeconfig
     flushHtml();
 
@@ -2580,7 +2583,11 @@ void setup_network() {
     config_server.on("/update", HTTP_POST, handle_ota_post, handle_ota_upload);
     config_server.on("/api/imu_calibrate", HTTP_POST, []() {
         attitude_calibrate_level();
-        config_server.send(200, "text/plain", "Level set OK — offsets saved to NVS.");
+        config_server.send(200, "text/plain", "Level set — current N2K attitude saved as zero reference.");
+    });
+    config_server.on("/api/imu_clear", HTTP_POST, []() {
+        attitude_clear_calibration();
+        config_server.send(200, "text/plain", "Level cleared — now using raw N2K attitude data.");
     });
     config_server.begin();
     Serial.println("[WebServer] Configuration web UI started on port 80");
