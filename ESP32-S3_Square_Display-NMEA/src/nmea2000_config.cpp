@@ -33,113 +33,113 @@ static void handle_n2k_msg(const tN2kMsg& msg);
 // ── Human-readable labels for the web UI dropdown ────────────────────
 const char* n2k_field_label(N2kField f) {
     switch (f) {
-        // Engine #1
-        case N2K_ENGINE_RPM:          return "Engine RPM";
-        case N2K_ENGINE_BOOST:        return "Engine Boost";
-        case N2K_ENGINE_TILT_TRIM:    return "Tilt / Trim";
-        case N2K_OIL_PRESSURE:        return "Oil Pressure";
-        case N2K_OIL_TEMPERATURE:     return "Oil Temperature";
-        case N2K_COOLANT_TEMPERATURE: return "Coolant Temperature";
-        case N2K_ALT_VOLTAGE:         return "Alternator Voltage";
-        case N2K_FUEL_RATE:           return "Fuel Rate";
-        case N2K_ENGINE_HOURS:        return "Engine Hours";
-        case N2K_ENGINE_LOAD:         return "Engine Load";
-        case N2K_ENGINE_TORQUE:       return "Engine Torque";
-        case N2K_EXHAUST_TEMPERATURE: return "Exhaust Temperature";
+        // Engine #1 — PGN 127488 (rapid), 127489 (dynamic)
+        case N2K_ENGINE_RPM:          return "Engine RPM [127488]";
+        case N2K_ENGINE_BOOST:        return "Engine Boost [127488]";
+        case N2K_ENGINE_TILT_TRIM:    return "Tilt / Trim [127488]";
+        case N2K_OIL_PRESSURE:        return "Oil Pressure [127489]";
+        case N2K_OIL_TEMPERATURE:     return "Oil Temperature [127489]";
+        case N2K_COOLANT_TEMPERATURE: return "Coolant Temperature [127489]";
+        case N2K_ALT_VOLTAGE:         return "Alternator Voltage [127489]";
+        case N2K_FUEL_RATE:           return "Fuel Rate [127489]";
+        case N2K_ENGINE_HOURS:        return "Engine Hours [127489]";
+        case N2K_ENGINE_LOAD:         return "Engine Load [127489]";
+        case N2K_ENGINE_TORQUE:       return "Engine Torque [127489]";
+        case N2K_EXHAUST_TEMPERATURE: return "Exhaust Temperature [127489]";
         // Engine #2
-        case N2K_ENGINE2_RPM:         return "Engine 2 RPM";
-        case N2K_ENGINE2_OIL_PRESSURE:return "Engine 2 Oil Pressure";
-        case N2K_ENGINE2_OIL_TEMP:    return "Engine 2 Oil Temp";
-        case N2K_ENGINE2_COOLANT_TEMP:return "Engine 2 Coolant Temp";
-        case N2K_ENGINE2_ALT_VOLTAGE: return "Engine 2 Alt Voltage";
-        case N2K_ENGINE2_FUEL_RATE:   return "Engine 2 Fuel Rate";
-        case N2K_ENGINE2_HOURS:       return "Engine 2 Hours";
-        case N2K_ENGINE2_EXHAUST_TEMP:return "Engine 2 Exhaust Temp";
-        // Transmission
-        case N2K_TRANS_GEAR:          return "Transmission Gear";
-        case N2K_TRANS_OIL_PRESSURE:  return "Trans Oil Pressure";
-        case N2K_TRANS_OIL_TEMP:      return "Trans Oil Temp";
-        // Trip
-        case N2K_TRIP_FUEL_USED:      return "Trip Fuel Used";
-        case N2K_FUEL_RATE_AVG:       return "Avg Fuel Rate";
-        case N2K_FUEL_RATE_ECONOMY:   return "Fuel Economy";
-        // Fluid levels
-        case N2K_FUEL_LEVEL:          return "Fuel Level";
-        case N2K_FRESHWATER_LEVEL:    return "Fresh Water Level";
-        case N2K_WASTEWATER_LEVEL:    return "Waste Water Level";
-        case N2K_OIL_LEVEL:           return "Oil Level";
-        case N2K_BLACKWATER_LEVEL:    return "Black Water Level";
-        case N2K_FUEL_CAPACITY:       return "Fuel Capacity";
-        case N2K_FRESHWATER_CAPACITY: return "Fresh Water Capacity";
-        case N2K_LIVEWELL_LEVEL:      return "Live Well Level";
+        case N2K_ENGINE2_RPM:         return "Engine 2 RPM [127488]";
+        case N2K_ENGINE2_OIL_PRESSURE:return "Engine 2 Oil Pressure [127489]";
+        case N2K_ENGINE2_OIL_TEMP:    return "Engine 2 Oil Temp [127489]";
+        case N2K_ENGINE2_COOLANT_TEMP:return "Engine 2 Coolant Temp [127489]";
+        case N2K_ENGINE2_ALT_VOLTAGE: return "Engine 2 Alt Voltage [127489]";
+        case N2K_ENGINE2_FUEL_RATE:   return "Engine 2 Fuel Rate [127489]";
+        case N2K_ENGINE2_HOURS:       return "Engine 2 Hours [127489]";
+        case N2K_ENGINE2_EXHAUST_TEMP:return "Engine 2 Exhaust Temp [127489]";
+        // Transmission — PGN 127493
+        case N2K_TRANS_GEAR:          return "Transmission Gear [127493]";
+        case N2K_TRANS_OIL_PRESSURE:  return "Trans Oil Pressure [127493]";
+        case N2K_TRANS_OIL_TEMP:      return "Trans Oil Temp [127493]";
+        // Trip — PGN 127497
+        case N2K_TRIP_FUEL_USED:      return "Trip Fuel Used [127497]";
+        case N2K_FUEL_RATE_AVG:       return "Avg Fuel Rate [127497]";
+        case N2K_FUEL_RATE_ECONOMY:   return "Fuel Economy [127497]";
+        // Fluid levels — PGN 127505
+        case N2K_FUEL_LEVEL:          return "Fuel Level [127505]";
+        case N2K_FRESHWATER_LEVEL:    return "Fresh Water Level [127505]";
+        case N2K_WASTEWATER_LEVEL:    return "Waste Water Level [127505]";
+        case N2K_OIL_LEVEL:           return "Oil Level [127505]";
+        case N2K_BLACKWATER_LEVEL:    return "Black Water Level [127505]";
+        case N2K_FUEL_CAPACITY:       return "Fuel Capacity [127505]";
+        case N2K_FRESHWATER_CAPACITY: return "Fresh Water Capacity [127505]";
+        case N2K_LIVEWELL_LEVEL:      return "Live Well Level [127505]";
         // Navigation
-        case N2K_HEADING:             return "Heading";
-        case N2K_MAGNETIC_DEVIATION:  return "Mag Deviation";
-        case N2K_MAGNETIC_VARIATION_HDG: return "Mag Variation (Hdg)";
-        case N2K_RATE_OF_TURN:        return "Rate of Turn";
-        case N2K_MAGNETIC_VARIATION:  return "Magnetic Variation";
-        case N2K_LATITUDE:            return "Latitude";
-        case N2K_LONGITUDE:           return "Longitude";
-        case N2K_COG:                 return "COG";
-        case N2K_SOG:                 return "SOG";
-        case N2K_GNSS_DATETIME:       return "GNSS Date/Time";
-        case N2K_GNSS_ALTITUDE:       return "GNSS Altitude";
-        case N2K_GNSS_SATELLITES:     return "GNSS Satellites";
-        case N2K_GNSS_HDOP:           return "GNSS HDOP";
-        case N2K_XTE:                 return "Cross Track Error";
-        case N2K_WPT_DISTANCE:        return "Waypoint Distance";
-        case N2K_WPT_BEARING:         return "Waypoint Bearing";
-        case N2K_WPT_VMG:             return "VMG to Waypoint";
-        case N2K_ETA_TIME:            return "ETA";
-        case N2K_SPEED_WATER:         return "Speed (Water)";
-        case N2K_SPEED_GROUND:        return "Speed (Ground)";
-        case N2K_LOG_TOTAL:           return "Total Log";
-        case N2K_LOG_TRIP:            return "Trip Log";
-        case N2K_LEEWAY:              return "Leeway";
-        // Depth
-        case N2K_WATER_DEPTH:         return "Water Depth";
-        case N2K_DEPTH_OFFSET:        return "Depth Offset";
-        // Wind
-        case N2K_WIND_SPEED_APPARENT: return "Wind Speed (Apparent)";
-        case N2K_WIND_ANGLE_APPARENT: return "Wind Angle (Apparent)";
-        case N2K_WIND_SPEED_TRUE:     return "Wind Speed (True)";
-        case N2K_WIND_ANGLE_TRUE:     return "Wind Angle (True)";
+        case N2K_HEADING:             return "Heading [127250]";
+        case N2K_MAGNETIC_DEVIATION:  return "Mag Deviation [127250]";
+        case N2K_MAGNETIC_VARIATION_HDG: return "Mag Variation Hdg [127250]";
+        case N2K_RATE_OF_TURN:        return "Rate of Turn [127251]";
+        case N2K_MAGNETIC_VARIATION:  return "Magnetic Variation [127258]";
+        case N2K_LATITUDE:            return "Latitude [129025]";
+        case N2K_LONGITUDE:           return "Longitude [129025]";
+        case N2K_COG:                 return "COG [129026]";
+        case N2K_SOG:                 return "SOG [129026]";
+        case N2K_GNSS_DATETIME:       return "GNSS Date/Time [129029]";
+        case N2K_GNSS_ALTITUDE:       return "GNSS Altitude [129029]";
+        case N2K_GNSS_SATELLITES:     return "GNSS Satellites [129029]";
+        case N2K_GNSS_HDOP:           return "GNSS HDOP [129029]";
+        case N2K_XTE:                 return "Cross Track Error [129283]";
+        case N2K_WPT_DISTANCE:        return "Waypoint Distance [129284]";
+        case N2K_WPT_BEARING:         return "Waypoint Bearing [129284]";
+        case N2K_WPT_VMG:             return "VMG to Waypoint [129284]";
+        case N2K_ETA_TIME:            return "ETA [129284]";
+        case N2K_SPEED_WATER:         return "Speed Water [128259]";
+        case N2K_SPEED_GROUND:        return "Speed Ground [128259]";
+        case N2K_LOG_TOTAL:           return "Total Log [128275]";
+        case N2K_LOG_TRIP:            return "Trip Log [128275]";
+        case N2K_LEEWAY:              return "Leeway [128000]";
+        // Depth — PGN 128267
+        case N2K_WATER_DEPTH:         return "Water Depth [128267]";
+        case N2K_DEPTH_OFFSET:        return "Depth Offset [128267]";
+        // Wind — PGN 130306
+        case N2K_WIND_SPEED_APPARENT: return "Wind Speed Apparent [130306]";
+        case N2K_WIND_ANGLE_APPARENT: return "Wind Angle Apparent [130306]";
+        case N2K_WIND_SPEED_TRUE:     return "Wind Speed True [130306]";
+        case N2K_WIND_ANGLE_TRUE:     return "Wind Angle True [130306]";
         // Environment
-        case N2K_TEMPERATURE:         return "Temperature";
-        case N2K_SEA_TEMPERATURE:     return "Sea Temperature";
-        case N2K_TEMPERATURE_SET:     return "Set Temperature";
-        case N2K_OUTSIDE_TEMP:        return "Outside Air Temp";
-        case N2K_OUTSIDE_HUMIDITY:    return "Humidity";
-        case N2K_ATMOSPHERIC_PRESSURE:return "Atmospheric Pressure";
-        case N2K_BAROMETRIC_PRESSURE: return "Barometric Pressure";
-        case N2K_FRIDGE_TEMPERATURE:       return "Fridge Temperature";
-        case N2K_FREEZER_TEMPERATURE:      return "Freezer Temperature";
-        case N2K_INSIDE_TEMPERATURE:       return "Inside Temperature";
-        case N2K_CABIN_TEMPERATURE:        return "Cabin Temperature";
-        case N2K_HEATING_TEMPERATURE:      return "Heating System Temp";
-        case N2K_DEWPOINT_TEMPERATURE:     return "Dew Point";
-        case N2K_WINDCHILL_APPARENT:       return "Wind Chill (Apparent)";
-        case N2K_WINDCHILL_THEORETICAL:    return "Wind Chill (Theoretical)";
-        // Attitude
-        case N2K_PITCH:               return "Pitch";
-        case N2K_ROLL:                return "Roll";
-        case N2K_YAW:                 return "Yaw";
+        case N2K_TEMPERATURE:         return "Temperature Generic [130312]";
+        case N2K_SEA_TEMPERATURE:     return "Sea Temperature [130310/312/316]";
+        case N2K_TEMPERATURE_SET:     return "Set Temperature [130312]";
+        case N2K_OUTSIDE_TEMP:        return "Outside Air Temp [130310/316]";
+        case N2K_OUTSIDE_HUMIDITY:    return "Humidity [130311]";
+        case N2K_ATMOSPHERIC_PRESSURE:return "Atmospheric Pressure [130310]";
+        case N2K_BAROMETRIC_PRESSURE: return "Barometric Pressure [130314]";
+        case N2K_FRIDGE_TEMPERATURE:      return "Fridge Temperature [130316]";
+        case N2K_FREEZER_TEMPERATURE:     return "Freezer Temperature [130316]";
+        case N2K_INSIDE_TEMPERATURE:      return "Inside Temperature [130316]";
+        case N2K_CABIN_TEMPERATURE:       return "Cabin Temperature [130316]";
+        case N2K_HEATING_TEMPERATURE:     return "Heating System Temp [130316]";
+        case N2K_DEWPOINT_TEMPERATURE:    return "Dew Point [130316]";
+        case N2K_WINDCHILL_APPARENT:      return "Wind Chill Apparent [130316]";
+        case N2K_WINDCHILL_THEORETICAL:   return "Wind Chill Theoretical [130316]";
+        // Attitude — PGN 127257
+        case N2K_PITCH:               return "Pitch [127257]";
+        case N2K_ROLL:                return "Roll [127257]";
+        case N2K_YAW:                 return "Yaw [127257]";
         // Rudder / Trim tabs
-        case N2K_RUDDER_POSITION:     return "Rudder Position";
-        case N2K_TRIM_TAB_PORT:       return "Trim Tab (Port)";
-        case N2K_TRIM_TAB_STBD:       return "Trim Tab (Starboard)";
+        case N2K_RUDDER_POSITION:     return "Rudder Position [127245]";
+        case N2K_TRIM_TAB_PORT:       return "Trim Tab Port [130576]";
+        case N2K_TRIM_TAB_STBD:       return "Trim Tab Starboard [130576]";
         // Battery / Electrical
-        case N2K_BATTERY_VOLTAGE:     return "Battery Voltage";
-        case N2K_BATTERY_CURRENT:     return "Battery Current";
-        case N2K_BATTERY_TEMPERATURE: return "Battery Temperature";
-        case N2K_BATTERY2_VOLTAGE:    return "Battery 2 Voltage";
-        case N2K_BATTERY2_CURRENT:    return "Battery 2 Current";
-        case N2K_BATTERY_SOC:         return "Battery SOC";
-        case N2K_BATTERY_TIME_REMAIN: return "Battery Time Remaining";
-        case N2K_DC_SOURCE_VOLTAGE:   return "DC Source Voltage";
-        case N2K_DC_SOURCE_CURRENT:   return "DC Source Current";
+        case N2K_BATTERY_VOLTAGE:     return "Battery Voltage [127508]";
+        case N2K_BATTERY_CURRENT:     return "Battery Current [127508]";
+        case N2K_BATTERY_TEMPERATURE: return "Battery Temperature [127508]";
+        case N2K_BATTERY2_VOLTAGE:    return "Battery 2 Voltage [127508]";
+        case N2K_BATTERY2_CURRENT:    return "Battery 2 Current [127508]";
+        case N2K_BATTERY_SOC:         return "Battery SOC [127506]";
+        case N2K_BATTERY_TIME_REMAIN: return "Battery Time Remaining [127506]";
+        case N2K_DC_SOURCE_VOLTAGE:   return "DC Source Voltage [127751]";
+        case N2K_DC_SOURCE_CURRENT:   return "DC Source Current [127751]";
         // Time
-        case N2K_SYSTEM_TIME:         return "System Time";
+        case N2K_SYSTEM_TIME:         return "System Time [126992]";
         default:                      return "None";
     }
 }

@@ -303,6 +303,11 @@ static const N2kField n2k_all_fields[] = {
     N2K_TEMPERATURE, N2K_SEA_TEMPERATURE, N2K_TEMPERATURE_SET,
     N2K_OUTSIDE_TEMP, N2K_OUTSIDE_HUMIDITY,
     N2K_ATMOSPHERIC_PRESSURE, N2K_BAROMETRIC_PRESSURE,
+    // PGN 130316 — Temperature Extended Range
+    N2K_FRIDGE_TEMPERATURE, N2K_FREEZER_TEMPERATURE,
+    N2K_INSIDE_TEMPERATURE, N2K_CABIN_TEMPERATURE,
+    N2K_HEATING_TEMPERATURE, N2K_DEWPOINT_TEMPERATURE,
+    N2K_WINDCHILL_APPARENT, N2K_WINDCHILL_THEORETICAL,
     // Attitude
     N2K_PITCH, N2K_ROLL, N2K_YAW,
     // Rudder / Trim
@@ -1018,7 +1023,11 @@ void handle_gauges_page() {
     html += "      if(lbl){lbl.style.color='#b71c1c';lbl.textContent='TEST MODE OFF';}\n";
     html += "    }\n";
     html += "    var testBtns=document.querySelectorAll('button[onclick^=\"testGaugePoint\"]');\n";
-    html += "    for(var i=0;i<testBtns.length;i++){ testBtns[i].disabled = !j.test_mode; }\n";
+    html += "    for(var i=0;i<testBtns.length;i++){\n";
+    html += "      testBtns[i].disabled = !j.test_mode;\n";
+    html += "      testBtns[i].style.backgroundColor = j.test_mode ? '#4a90e2' : '#cccccc';\n";
+    html += "      testBtns[i].style.cursor = j.test_mode ? 'pointer' : 'not-allowed';\n";
+    html += "    }\n";
     html += "  }).catch(function(e){console.error(e);});\n";
     html += "}\n";
 

@@ -935,7 +935,11 @@ void handle_gauges_page() {
     html += "      if(lbl){lbl.style.color='#b71c1c';lbl.textContent='TEST MODE OFF';}\n";
     html += "    }\n";
     html += "    var testBtns=document.querySelectorAll('button[onclick^=\"testGaugePoint\"]');\n";
-    html += "    for(var i=0;i<testBtns.length;i++){ testBtns[i].disabled = !j.test_mode; }\n";
+    html += "    for(var i=0;i<testBtns.length;i++){\n";
+    html += "      testBtns[i].disabled = !j.test_mode;\n";
+    html += "      testBtns[i].style.backgroundColor = j.test_mode ? '#4a90e2' : '#cccccc';\n";
+    html += "      testBtns[i].style.cursor = j.test_mode ? 'pointer' : 'not-allowed';\n";
+    html += "    }\n";
     html += "  }).catch(function(e){console.error(e);});\n";
     html += "}\n";
 
