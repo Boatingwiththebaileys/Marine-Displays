@@ -13,6 +13,7 @@ bool test_mode = false;
 #include "ui.h"
 #include "ui_Settings.h"
 #include "signalk_config.h"
+#include "nmea2000_config.h"
 #include "screen_config_c_api.h"
 #include "network_setup.h"
 #include "gauge_config.h"
@@ -25,8 +26,11 @@ bool test_mode = false;
 #include "position_display.h"
 #include "compass_display.h"
 #include "ais_display.h"
+#include "attitude_display.h"
 #include "anchor_display.h"
+#include "Gyro_QMI8658.h"
 #include "unit_convert.h"
+#include "version.h"
 #include "RTC_PCF85063.h"
 #ifdef __cplusplus
 extern "C" {
@@ -721,14 +725,12 @@ extern "C" void update_needles_for_screen(int screen_num) {
             (float)g_nav_latitude, (float)g_nav_longitude, g_nav_datetime);
         return;
     } else if (screen_configs[screen_idx].display_type == DISPLAY_TYPE_COMPASS) {
-        // Compass display — path holds navigation.headingMagnetic or headingTrue (radians)
+        // Compass display — heading from NMEA 2000 PGN 127250 (already in degrees)
         String hdg_path = String(screen_configs[screen_idx].number_path);
-        if (hdg_path.length() == 0) hdg_path = "navigation.headingMagnetic";
-        float hdg_rad = get_sensor_value_by_path(hdg_path);
-        if (!isnan(hdg_rad)) {
-            float hdg_deg = convert_angle_rad(hdg_rad);
-            bool is_true = (hdg_path.indexOf("True") >= 0 || hdg_path.indexOf("true") >= 0);
-            compass_display_update(screen_idx, hdg_deg, is_true ? 1 : 0);
+        if (hdg_path.length() == 0) hdg_path = String((int)N2K_HEADING);
+        float hdg_deg = get_sensor_value_by_path(hdg_path);
+        if (!isnan(hdg_deg)) {
+            compass_display_update(screen_idx, hdg_deg, 0);
         }
         // BL / BR extra data fields
         auto compass_get_field = [](const String& path, float& val, String& unit, String& desc) {
@@ -746,27 +748,36 @@ extern "C" void update_needles_for_screen(int screen_num) {
         compass_display_update_bl(screen_idx, bl_val, bl_unit.c_str(), bl_desc.c_str());
         compass_display_update_br(screen_idx, br_val, br_unit.c_str(), br_desc.c_str());
         return;
-    } else if (screen_configs[screen_idx].display_type == DISPLAY_TYPE_AIS) {
-        // AIS radar display — fetch targets from Signal K REST API, then redraw
-        String sk_ip = get_signalk_server_ip();
-        uint16_t sk_port = get_signalk_server_port();
-        ais_fetch_targets(sk_ip.c_str(), sk_port);
-        // Own-boat nav data: COG/SOG from Signal K (radians/m→s → degrees/knots)
-        float own_cog_rad = get_sensor_value_by_path("navigation.courseOverGroundTrue");
-        float own_sog_ms  = get_sensor_value_by_path("navigation.speedOverGround");
-        float own_cog = isnan(own_cog_rad) ? NAN : convert_angle_rad(own_cog_rad);
-        float own_sog = isnan(own_sog_ms)  ? NAN : convert_speed(own_sog_ms);
-        ais_display_update(screen_idx, (float)g_nav_latitude, (float)g_nav_longitude,
-                           own_cog, own_sog);
+    } else if (screen_configs[screen_idx].display_type == DISPLAY_TYPE_ATTITUDE) {
+        // Attitude display — pitch/roll/yaw from onboard IMU
+        float att_pitch, att_roll, att_yaw;
+        attitude_imu_read(&att_pitch, &att_roll, &att_yaw);
+        attitude_display_update(screen_idx, att_pitch, att_roll, att_yaw);
         return;
     } else if (screen_configs[screen_idx].display_type == DISPLAY_TYPE_ANCHOR) {
-        // Anchor alarm — GPS from SignalK navigation.position, COG/SOG as radians/ms
-        float cog_rad = get_sensor_value_by_path("navigation.courseOverGroundTrue");
-        float sog_ms  = get_sensor_value_by_path("navigation.speedOverGround");
-        float cog_deg = isnan(cog_rad) ? NAN : cog_rad * (180.0f / (float)M_PI);
+        // Anchor alarm — own-boat GPS position + COG/SOG
+        float own_cog_deg = get_sensor_value_by_path(String((int)N2K_COG));
+        float own_sog_ms  = get_sensor_value_by_path(String((int)N2K_SOG));
         anchor_display_update(screen_idx,
             (float)g_nav_latitude, (float)g_nav_longitude,
-            cog_deg, sog_ms);
+            own_cog_deg, own_sog_ms);
+        return;
+    } else if (screen_configs[screen_idx].display_type == DISPLAY_TYPE_AIS) {
+        // AIS radar display — N2K targets arrive via PGN handlers;
+        // fall back to Signal K REST API when WiFi is connected and N2K is not running.
+        if (!is_nmea2000_running()) {
+            String sk_ip = get_signalk_server_ip();
+            uint16_t sk_port = get_signalk_server_port();
+            ais_fetch_targets(sk_ip.c_str(), sk_port);
+        }
+        // Own-boat nav data: COG/SOG/heading from sensor map
+        float own_cog_deg = get_sensor_value_by_path(String((int)N2K_COG));
+        float own_sog_ms  = get_sensor_value_by_path(String((int)N2K_SOG));
+        float own_hdg_deg = get_sensor_value_by_path(String((int)N2K_HEADING));
+        float own_cog = own_cog_deg;  // already degrees
+        float own_sog = isnan(own_sog_ms) ? NAN : convert_speed(own_sog_ms);
+        ais_display_update(screen_idx, (float)g_nav_latitude, (float)g_nav_longitude,
+                           own_cog, own_sog, own_hdg_deg);
         return;
     }
     
@@ -795,7 +806,6 @@ extern "C" void update_needles_for_screen(int screen_num) {
             bottom_value = get_sensor_value(SCREEN1_COOLANT_TEMP);
             top_type = PARAM_RPM;
             bottom_type = PARAM_COOLANT_TEMP;
-            // Debug output disabled for performance
             break;
         case 2:  // RPM + Fuel
             top_needle = ui_Needle2;
@@ -965,14 +975,30 @@ void setup() {
     detect_expander_address();
 
     if (is_board_v4()) {
-      // V4 (CH32V003): Set output latch to safe values BEFORE configuring directions.
-      // All outputs HIGH: TP_RST released, LCD_RST released, SDCS deselected, SYS_EN on.
-      // BEE_EN output latch doesn't matter since direction mask keeps it as input.
-      Set_EXIOS(0xFF);
-      // Direction: TCA convention 0xC5 → driver inverts to 0x3A for CH32V003
-      // EXIO1=out(TP_RST), EXIO3=out(LCD_RST), EXIO4=out(SDCS), EXIO5=out(SYS_EN)
-      // EXIO0=in(charger), EXIO2=in(TP_INT), EXIO6=in(BEE_EN safe), EXIO7=in(RTC_INT)
-      TCA9554PWR_Init(V4_DIR_TCA_CONVENTION);
+      // V4 (CH32V003): Write OUTPUT before DIR to prevent buzzer glitch.
+      // CH32V003 powers on with output latch=0xFF (all HIGH). Writing DIR=0xFF
+      // first would momentarily drive BEE_EN HIGH (buzzer on) before OUTPUT=0x3A
+      // silences it. Writing OUTPUT first ensures safe levels before any pin
+      // becomes an output.
+      //
+      // Keep TP_RST LOW during init (OUT_NORMAL & ~0x02 = 0x38) so GT911 is held
+      // in reset while we prepare. GT911 address selection follows below.
+      I2C_Write_EXIO(CH32V003_OUTPUT_REG, CH32V003_OUT_NORMAL & ~0x02u); // TP_RST LOW
+      I2C_Write_EXIO(CH32V003_DIR_REG, CH32V003_DIR_ALL_OUT);
+
+      // GT911 address selection: with CH32V003 DIR=0xFF and OUTPUT bit2=0,
+      // EXIO2 (TP_INT) is driven LOW by CH32V003. We also drive GPIO16 LOW to
+      // guarantee INT is LOW even if CH32V003 state is corrupted (e.g. after
+      // esptool upload partially corrupted the DIR register via I2C bus recovery).
+      // TP_RST is already LOW from the write above — release it HIGH now with
+      // INT guaranteed LOW → GT911 latches address 0x5D.
+      pinMode(GT911_INT_PIN, OUTPUT);
+      digitalWrite(GT911_INT_PIN, LOW);
+      delay(50);                                                  // hold RST LOW
+      I2C_Write_EXIO(CH32V003_OUTPUT_REG, CH32V003_OUT_NORMAL);  // TP_RST HIGH, INT via EXIO2 still LOW
+      delay(120);                                                 // GT911 boots at 0x5D
+      pinMode(GT911_INT_PIN, INPUT);                             // release GPIO16; EXIO2 still drives INT
+      ets_printf("[GT911] address pre-selected 0x5D via RST sequence\r\n");
     } else {
       // V3 (TCA9554): Write output latch before switching to output mode
       Set_EXIOS(0xDF);             // bit5=0 (PIN6 LOW on V3)
@@ -986,7 +1012,8 @@ void setup() {
     delay(500);
 
     ets_printf("*** Serial.begin done ***\r\n");
-    Serial.println("\n\n=== ESP32 Round Display Starting ===");
+    Serial.println("\n\n=== ESP32 Square Display Starting ===");
+    Serial.printf("Firmware version: %s\n", FW_VERSION);
     Serial.flush();
     
     // I2C and IO expander already initialized above; re-assert safe state after delay
@@ -1034,13 +1061,12 @@ void setup() {
     esp_log_level_set("esp_panel", ESP_LOG_WARN);
 
     // Initialize the display
-    ets_printf("*** LCD_Init start ***\r\n");
     LCD_Init();
-    ets_printf("*** LCD_Init done ***\r\n");
     // Re-assert safe IO expander state after LCD_Init (which may have modified registers)
     if (is_board_v4()) {
-      // V4: re-assert CH32V003 direction mask (BEE_EN as input = safe)
-      TCA9554PWR_Init(V4_DIR_TCA_CONVENTION);
+      // V4: re-assert Waveshare-matching CH32V003 state after LCD_Init
+      I2C_Write_EXIO(CH32V003_DIR_REG, CH32V003_DIR_ALL_OUT);
+      I2C_Write_EXIO(CH32V003_OUTPUT_REG, CH32V003_OUT_NORMAL);
     } else {
       // V3: re-assert all outputs with PIN6 LOW
       Set_EXIOS(Read_EXIOS(exio_output_reg()) & (uint8_t)~(1 << (EXIO_PIN6 - 1)));
@@ -1056,8 +1082,9 @@ void setup() {
                    (unsigned)heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
     }
 
-    // Initialize GT911 touch controller: reset with INT=LOW to force address 0x5D,
-    // auto-detect address (v3=0x5D, v4 may be 0x14), read config, attach interrupt.
+    // Initialize GT911 touch controller.
+    // V4: Waveshare approach — no reset, just probe both addresses.
+    // V3: reset with INT=LOW to force address 0x5D, attach interrupt.
     Touch_Init();
     Serial.println("Touch controller initialized");
     Serial.flush();
@@ -1088,13 +1115,6 @@ void setup() {
 
     // Ensure backlight is on for normal operation
     Set_Backlight(100);
-    Serial.println("[DISPLAY] Backlight set to 100");
-    Serial.flush();
-
-    // Ensure backlight is on for normal operation
-    Set_Backlight(100);
-    Serial.println("[DISPLAY] Backlight set to 100");
-    Serial.flush();
 
 
     
@@ -1168,24 +1188,16 @@ void setup() {
         ets_printf("[HEAP] *** CORRUPTION detected AFTER setup_network ***\r\n");
     }
     
-    // Start Signal K only if server is actually configured
-    Serial.println("Checking Signal K configuration...");
+    // Initialize QMI8658 IMU (accel + gyro) and load level calibration
+    QMI8658_Init();
+    attitude_load_calibration();
+    Serial.println("IMU initialized");
     Serial.flush();
-    String sk_ip = get_signalk_server_ip();
-    Serial.print("Signal K Server IP: '");
-    Serial.print(sk_ip);
-    Serial.println("'");
+
+    // Start NMEA 2000 CAN bus listener
+    Serial.println("Starting NMEA 2000...");
     Serial.flush();
-    
-    if (sk_ip.length() > 0 && is_wifi_connected()) {
-        Serial.println("Starting Signal K...");
-        Serial.flush();
-        enable_signalk("", "", sk_ip.c_str(), get_signalk_server_port());
-    } else {
-        Serial.println("Signal K not configured yet");
-        Serial.println("Connect to web UI to configure Signal K server");
-        Serial.flush();
-    }
+    enable_nmea2000();
     
     Serial.println("Display initialized with WiFi optimizations.");
     Serial.print("WiFi SSID: ");
@@ -1298,9 +1310,9 @@ void loop() {
         
         rotate_needle(needle_angle);
         rotate_lower_needle(lower_needle_angle);
-    } else {
-        // Use values from Signal K (automatically updated by background task)
-        // Update needles every 100ms for smooth operation
+    } else if (!is_n2k_updates_paused() && !is_signalk_ws_paused()) {
+        // Update needles/displays every 100ms for smooth operation.
+        // Skip entirely when config page is open to prevent LVGL races.
         unsigned long now = millis();
         if (now - last_needle_update >= 100) {
             int current_screen = ui_get_current_screen();
@@ -1623,43 +1635,43 @@ void loop() {
     }
 
     Lvgl_Loop();
+    brightness_nvs_flush();
 
-    // WS idle watchdog: resume WS automatically once the config page has been
-    // idle for 10 seconds.  This is the ONLY path that resumes WS after a save —
-    // the save handler deliberately does NOT schedule a resume because the user
-    // typically clicks another tab immediately, and a connect→disconnect→TIME_WAIT
-    // cycle from a brief reconnect crashes the next fragment.
+    // WS / N2K idle watchdog: resume automatically once the config page has been
+    // idle for 20 seconds.  The config page sends a keepalive ping every 8s,
+    // so this only fires after the user has actually closed the page.
     {
         static unsigned long last_ws_watchdog = 0;
         unsigned long now_wd = millis();
         if (now_wd - last_ws_watchdog >= 2000UL) {
             last_ws_watchdog = now_wd;
-            if (is_signalk_ws_paused()
-                    && !g_signalk_ws_resume_pending
-                    && g_config_page_last_seen != 0
-                    && (now_wd - g_config_page_last_seen) >= 10000UL) {
-                Serial.printf("[SK] Config page idle >10s (iRAM=%u), auto-resuming WS\n",
+            if (g_config_page_last_seen != 0
+                    && (now_wd - g_config_page_last_seen) >= 20000UL) {
+                Serial.printf("[CFG] Config page closed (idle >20s, iRAM=%u), resuming\n",
                               heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
                 g_config_page_last_seen = 0;
-                resume_signalk_ws();
+                if (is_signalk_ws_paused() && !g_signalk_ws_resume_pending)
+                    resume_signalk_ws();
+                resume_n2k_updates();
             }
         }
     }
 
-    // Buzzer safety maintenance — runs for both v3 and v4 every 50 ms.
-    // After a crash-reboot the I2C bus can be mid-transaction so the direction
-    // write in setup() silently fails, leaving BEE_EN/PIN6 as OUTPUT HIGH.
-    // Periodically re-assert the safe state so the buzzer can never stay stuck.
+    // Buzzer safety maintenance — V3 every 200 ms, V4 every 30 s.
+    // V4: With Waveshare setup (dir=0xFF, all outputs), buzzer is controlled
+    // via output register bit 6 (BEE_EN).  Periodically ensure it's LOW.
     {
         static unsigned long last_buz_maintain = 0;
         unsigned long now_m = millis();
-        if (now_m - last_buz_maintain >= 50) {
-            last_buz_maintain = now_m;
-            if (is_board_v4()) {
-                // Clear BEE_EN output latch (bit6) and keep direction as INPUT
-                Set_EXIOS(Read_EXIOS(exio_output_reg()) & (uint8_t)~(1 << (PIN_BEE_EN - 1)));
-                Mode_EXIO(PIN_BEE_EN, 1); // input = safe (can't drive buzzer)
-            } else {
+        if (is_board_v4()) {
+            // V4: unconditional write every 30 s (skip first 3 s to avoid startup beep)
+            if (now_m > 3000 && (now_m - last_buz_maintain >= 30000)) {
+                last_buz_maintain = now_m;
+                Set_EXIO(PIN_BEE_EN, Low);
+            }
+        } else {
+            if (now_m - last_buz_maintain >= 200) {
+                last_buz_maintain = now_m;
                 Set_EXIOS(Read_EXIOS(exio_output_reg()) & (uint8_t)~(1 << (EXIO_PIN6 - 1)));
                 Mode_EXIOS(0x00);
             }

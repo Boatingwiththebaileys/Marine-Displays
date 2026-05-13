@@ -10,6 +10,7 @@
 #include "compass_display.h"
 #include "position_display.h"
 #include "ais_display.h"
+#include "attitude_display.h"
 #include "anchor_display.h"
 #include <lvgl.h>
 #include "esp_log.h"
@@ -208,6 +209,8 @@ bool apply_screen_visuals_for_one(int s) {
             quad_number_display_destroy(s);
             gauge_number_display_destroy(s);
             graph_display_destroy(s);
+            attitude_display_destroy(s);
+            anchor_display_destroy(s);
             lv_obj_t *upper_needle = get_upper_needle_obj_for_screen(s);
             lv_obj_t *lower_needle = get_lower_needle_obj_for_screen(s);
             if (upper_needle) lv_obj_add_flag(upper_needle, LV_OBJ_FLAG_HIDDEN);
@@ -226,6 +229,8 @@ bool apply_screen_visuals_for_one(int s) {
             quad_number_display_destroy(s);
             gauge_number_display_destroy(s);
             graph_display_destroy(s);
+            attitude_display_destroy(s);
+            anchor_display_destroy(s);
             lv_obj_t *upper_needle = get_upper_needle_obj_for_screen(s);
             lv_obj_t *lower_needle = get_lower_needle_obj_for_screen(s);
             if (upper_needle) lv_obj_add_flag(upper_needle, LV_OBJ_FLAG_HIDDEN);
@@ -237,7 +242,7 @@ bool apply_screen_visuals_for_one(int s) {
             dual_number_display_create(s,
                 screen_configs[s].dual_top_font_size, screen_configs[s].dual_top_font_color,
                 screen_configs[s].dual_bottom_font_size, screen_configs[s].dual_bottom_font_color,
-                screen_configs[s].number_bg_color);
+                (strcmp(screen_configs[s].background_path, "Custom Color") == 0) ? screen_configs[s].number_bg_color : "");
             Serial.printf("[APPLY_ONE] s=%d DUAL created, invalidating screen\n", s);
             lv_obj_invalidate(get_screen_obj(s));
             any = true;
@@ -247,6 +252,8 @@ bool apply_screen_visuals_for_one(int s) {
             dual_number_display_destroy(s);
             gauge_number_display_destroy(s);
             graph_display_destroy(s);
+            attitude_display_destroy(s);
+            anchor_display_destroy(s);
             lv_obj_t *upper_needle = get_upper_needle_obj_for_screen(s);
             lv_obj_t *lower_needle = get_lower_needle_obj_for_screen(s);
             if (upper_needle) lv_obj_add_flag(upper_needle, LV_OBJ_FLAG_HIDDEN);
@@ -260,7 +267,7 @@ bool apply_screen_visuals_for_one(int s) {
                 screen_configs[s].quad_tr_font_size, screen_configs[s].quad_tr_font_color,
                 screen_configs[s].quad_bl_font_size, screen_configs[s].quad_bl_font_color,
                 screen_configs[s].quad_br_font_size, screen_configs[s].quad_br_font_color,
-                screen_configs[s].number_bg_color);
+                (strcmp(screen_configs[s].background_path, "Custom Color") == 0) ? screen_configs[s].number_bg_color : "");
             Serial.printf("[APPLY_ONE] s=%d QUAD created, invalidating screen\n", s);
             lv_obj_invalidate(get_screen_obj(s));
             any = true;
@@ -270,6 +277,8 @@ bool apply_screen_visuals_for_one(int s) {
             dual_number_display_destroy(s);
             quad_number_display_destroy(s);
             graph_display_destroy(s);
+            attitude_display_destroy(s);
+            anchor_display_destroy(s);
             lv_obj_t *lower_needle = get_lower_needle_obj_for_screen(s);
             if (lower_needle) lv_obj_add_flag(lower_needle, LV_OBJ_FLAG_HIDDEN);
             lv_obj_t *bot = get_bottom_icon_obj_for_screen(s);
@@ -309,6 +318,8 @@ bool apply_screen_visuals_for_one(int s) {
             quad_number_display_destroy(s);
             gauge_number_display_destroy(s);
             graph_display_destroy(s);
+            attitude_display_destroy(s);
+            anchor_display_destroy(s);
             lv_obj_t *upper_needle = get_upper_needle_obj_for_screen(s);
             lv_obj_t *lower_needle = get_lower_needle_obj_for_screen(s);
             if (upper_needle) lv_obj_add_flag(upper_needle, LV_OBJ_FLAG_HIDDEN);
@@ -328,6 +339,8 @@ bool apply_screen_visuals_for_one(int s) {
             quad_number_display_destroy(s);
             gauge_number_display_destroy(s);
             graph_display_destroy(s);
+            attitude_display_destroy(s);
+            anchor_display_destroy(s);
             position_display_destroy(s);
             mark_position_display_destroyed(s + 1);
             compass_display_create(s);
@@ -340,12 +353,28 @@ bool apply_screen_visuals_for_one(int s) {
             quad_number_display_destroy(s);
             gauge_number_display_destroy(s);
             graph_display_destroy(s);
+            attitude_display_destroy(s);
+            anchor_display_destroy(s);
             compass_display_destroy(s);
             mark_compass_display_destroyed(s + 1);
             ais_display_destroy(s);
-            anchor_display_destroy(s);
             position_display_create(s);
             mark_position_display_created(s + 1);
+            any = true;
+        } else if (screen_configs[s].display_type == DISPLAY_TYPE_AIS) {
+            Serial.printf("[APPLY_ONE] s=%d → AIS\n", s);
+            number_display_destroy(s);
+            dual_number_display_destroy(s);
+            quad_number_display_destroy(s);
+            gauge_number_display_destroy(s);
+            graph_display_destroy(s);
+            compass_display_destroy(s);
+            mark_compass_display_destroyed(s + 1);
+            position_display_destroy(s);
+            mark_position_display_destroyed(s + 1);
+            attitude_display_destroy(s);
+            anchor_display_destroy(s);
+            ais_display_create(s);
             any = true;
         } else if (screen_configs[s].display_type == DISPLAY_TYPE_ANCHOR) {
             Serial.printf("[APPLY_ONE] s=%d → ANCHOR\n", s);
@@ -359,6 +388,7 @@ bool apply_screen_visuals_for_one(int s) {
             position_display_destroy(s);
             mark_position_display_destroyed(s + 1);
             ais_display_destroy(s);
+            attitude_display_destroy(s);
             anchor_display_destroy(s);
             lv_obj_t *upper_needle_anc = get_upper_needle_obj_for_screen(s);
             lv_obj_t *lower_needle_anc = get_lower_needle_obj_for_screen(s);
@@ -370,8 +400,8 @@ bool apply_screen_visuals_for_one(int s) {
             if (bot_icon_anc) lv_obj_add_flag(bot_icon_anc, LV_OBJ_FLAG_HIDDEN);
             anchor_display_create(s);
             any = true;
-        } else if (screen_configs[s].display_type == DISPLAY_TYPE_AIS) {
-            Serial.printf("[APPLY_ONE] s=%d → AIS\n", s);
+        } else if (screen_configs[s].display_type == DISPLAY_TYPE_ATTITUDE) {
+            Serial.printf("[APPLY_ONE] s=%d \u2192 ATTITUDE\n", s);
             number_display_destroy(s);
             dual_number_display_destroy(s);
             quad_number_display_destroy(s);
@@ -381,7 +411,14 @@ bool apply_screen_visuals_for_one(int s) {
             mark_compass_display_destroyed(s + 1);
             position_display_destroy(s);
             mark_position_display_destroyed(s + 1);
-            ais_display_create(s);
+            ais_display_destroy(s);            lv_obj_t *upper_needle = get_upper_needle_obj_for_screen(s);
+            lv_obj_t *lower_needle = get_lower_needle_obj_for_screen(s);
+            if (upper_needle) lv_obj_add_flag(upper_needle, LV_OBJ_FLAG_HIDDEN);
+            if (lower_needle) lv_obj_add_flag(lower_needle, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_t *top_icon = get_top_icon_obj_for_screen(s);
+            lv_obj_t *bot_icon = get_bottom_icon_obj_for_screen(s);
+            if (top_icon) lv_obj_add_flag(top_icon, LV_OBJ_FLAG_HIDDEN);
+            if (bot_icon) lv_obj_add_flag(bot_icon, LV_OBJ_FLAG_HIDDEN);            attitude_display_create(s);
             any = true;
         } else {
             // DISPLAY_TYPE_GAUGE (default) — destroy all non-gauge overlays and restore needles
@@ -396,6 +433,7 @@ bool apply_screen_visuals_for_one(int s) {
             position_display_destroy(s);
             mark_position_display_destroyed(s + 1);
             ais_display_destroy(s);
+            attitude_display_destroy(s);
             anchor_display_destroy(s);
             // Restore upper needle visibility (was hidden when switching away from GAUGE)
             lv_obj_t *upper_needle = get_upper_needle_obj_for_screen(s);

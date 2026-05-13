@@ -1,6 +1,7 @@
 // ...existing code...
 
 #include "gauge_config.h"
+#include "version.h"
 #include <Arduino.h>
 #include <WiFi.h>
 #include <WebServer.h>
@@ -12,6 +13,7 @@
 #include "signalk_config.h"
 #include "gauge_config.h"
 #include "screen_config_c_api.h"
+#include "nmea2000_config.h"
 #include "ui_Settings.h"
 #include <FS.h>
 #include <SPIFFS.h>
@@ -20,6 +22,7 @@
 #include <sys/stat.h>
 #include <Update.h>
 #include <esp_ota_ops.h>
+#include "attitude_display.h"
 
 // ...existing code...
 
@@ -49,25 +52,8 @@ extern "C" void show_fallback_error_screen_if_needed() {
             }
         }
     }
-    if (all_default && !g_error_screen_active) {
-        Serial.println("[ERROR] All screen configs are default/blank. Showing fallback error screen.");
-        g_error_screen_active = true;
-        #ifdef LVGL_H
-        // Do NOT call lv_obj_clean() — that frees the global UI object pointers
-        // (ui_TopIcon1, ui_Needle, etc.) while loop() continues to use them,
-        // causing dangling-pointer PSRAM heap corruption.
-        // Create an opaque overlay instead so existing objects stay valid.
-        lv_obj_t *scr = lv_scr_act();
-        lv_obj_t *overlay = lv_obj_create(scr);
-        lv_obj_set_size(overlay, LV_HOR_RES, LV_VER_RES);
-        lv_obj_set_style_bg_color(overlay, lv_color_black(), LV_PART_MAIN);
-        lv_obj_set_style_bg_opa(overlay, LV_OPA_COVER, LV_PART_MAIN);
-        lv_obj_set_style_border_width(overlay, 0, LV_PART_MAIN);
-        lv_obj_align(overlay, LV_ALIGN_CENTER, 0, 0);
-        lv_obj_t *label = lv_label_create(overlay);
-        lv_label_set_text(label, "ERROR: No valid config loaded.\nCheck SD card or NVS.\n\nConnect to WiFi AP:\nESP32-SquareDisplay\nThen open 192.168.4.1");
-        lv_obj_align(label, LV_ALIGN_CENTER, 0, 0);
-        #endif
+    if (all_default) {
+        Serial.println("[WARN] No valid config loaded. Keeping default UI (logo/settings) so setup remains accessible.");
     }
 }
 
@@ -245,6 +231,8 @@ String saved_signalk_ip = "";
 uint16_t saved_signalk_port = 0;
 // Hostname for the device (editable via Network Setup)
 String saved_hostname = "";
+// Own ship MMSI for AIS self-filtering (0 = disabled)
+String saved_own_mmsi = "";
 // 10 SignalK paths: [screen][gauge] => idx = s*2+g
 String signalk_paths[NUM_SCREENS * 2];
 // Auto-scroll interval in seconds (0 = off)
@@ -277,6 +265,86 @@ static std::vector<String> g_bgFiles;
 // forcing the backing store into PSRAM and freeing ~8 KB of internal RAM.
 String g_http_html_buf;
 bool   g_http_html_buf_reserved = false;
+
+// ── N2K field dropdown helper ────────────────────────────────────────
+// All N2kField values the user can choose from (order = UI order).
+static const N2kField n2k_all_fields[] = {
+    // Engine #1
+    N2K_ENGINE_RPM, N2K_ENGINE_BOOST, N2K_ENGINE_TILT_TRIM,
+    N2K_OIL_PRESSURE, N2K_OIL_TEMPERATURE, N2K_COOLANT_TEMPERATURE,
+    N2K_ALT_VOLTAGE, N2K_FUEL_RATE, N2K_ENGINE_HOURS,
+    N2K_ENGINE_LOAD, N2K_ENGINE_TORQUE, N2K_EXHAUST_TEMPERATURE,
+    // Engine #2
+    N2K_ENGINE2_RPM, N2K_ENGINE2_OIL_PRESSURE, N2K_ENGINE2_OIL_TEMP,
+    N2K_ENGINE2_COOLANT_TEMP, N2K_ENGINE2_ALT_VOLTAGE,
+    N2K_ENGINE2_FUEL_RATE, N2K_ENGINE2_HOURS, N2K_ENGINE2_EXHAUST_TEMP,
+    // Transmission
+    N2K_TRANS_GEAR, N2K_TRANS_OIL_PRESSURE, N2K_TRANS_OIL_TEMP,
+    // Trip
+    N2K_TRIP_FUEL_USED, N2K_FUEL_RATE_AVG, N2K_FUEL_RATE_ECONOMY,
+    // Fluid levels
+    N2K_FUEL_LEVEL, N2K_FRESHWATER_LEVEL, N2K_WASTEWATER_LEVEL,
+    N2K_OIL_LEVEL, N2K_BLACKWATER_LEVEL, N2K_LIVEWELL_LEVEL,
+    N2K_FUEL_CAPACITY, N2K_FRESHWATER_CAPACITY,
+    // Navigation
+    N2K_HEADING, N2K_MAGNETIC_DEVIATION, N2K_MAGNETIC_VARIATION_HDG,
+    N2K_RATE_OF_TURN, N2K_MAGNETIC_VARIATION,
+    N2K_LATITUDE, N2K_LONGITUDE, N2K_COG, N2K_SOG,
+    N2K_GNSS_ALTITUDE, N2K_GNSS_SATELLITES, N2K_GNSS_HDOP,
+    N2K_XTE, N2K_WPT_DISTANCE, N2K_WPT_BEARING, N2K_WPT_VMG, N2K_ETA_TIME,
+    N2K_SPEED_WATER, N2K_SPEED_GROUND,
+    N2K_LOG_TOTAL, N2K_LOG_TRIP, N2K_LEEWAY,
+    // Depth
+    N2K_WATER_DEPTH, N2K_DEPTH_OFFSET,
+    // Wind
+    N2K_WIND_SPEED_APPARENT, N2K_WIND_ANGLE_APPARENT,
+    N2K_WIND_SPEED_TRUE, N2K_WIND_ANGLE_TRUE,
+    // Environment
+    N2K_TEMPERATURE, N2K_SEA_TEMPERATURE, N2K_TEMPERATURE_SET,
+    N2K_OUTSIDE_TEMP, N2K_OUTSIDE_HUMIDITY,
+    N2K_ATMOSPHERIC_PRESSURE, N2K_BAROMETRIC_PRESSURE,
+    // PGN 130316 — Temperature Extended Range
+    N2K_FRIDGE_TEMPERATURE, N2K_FREEZER_TEMPERATURE,
+    N2K_INSIDE_TEMPERATURE, N2K_CABIN_TEMPERATURE,
+    N2K_HEATING_TEMPERATURE, N2K_DEWPOINT_TEMPERATURE,
+    N2K_WINDCHILL_APPARENT, N2K_WINDCHILL_THEORETICAL,
+    // Attitude
+    N2K_PITCH, N2K_ROLL, N2K_YAW,
+    // Rudder / Trim
+    N2K_RUDDER_POSITION, N2K_TRIM_TAB_PORT, N2K_TRIM_TAB_STBD,
+    // Battery / Electrical
+    N2K_BATTERY_VOLTAGE, N2K_BATTERY_CURRENT, N2K_BATTERY_TEMPERATURE,
+    N2K_BATTERY2_VOLTAGE, N2K_BATTERY2_CURRENT,
+    N2K_BATTERY_SOC, N2K_BATTERY_TIME_REMAIN,
+    N2K_DC_SOURCE_VOLTAGE, N2K_DC_SOURCE_CURRENT,
+    // Time
+    N2K_GNSS_DATETIME, N2K_SYSTEM_TIME,
+};
+static const int n2k_all_fields_count = sizeof(n2k_all_fields) / sizeof(n2k_all_fields[0]);
+
+// Build an HTML <select> for an N2K field.  `formName` is the HTML name=
+// attribute, `currentVal` is the stored value (may be numeric enum or
+// legacy SK path string).
+static String n2k_select(const String& formName, const char* currentVal) {
+    N2kField cur = n2k_field_from_stored(String(currentVal));
+    String h = "<select name='" + formName + "' style='width:80%'>"
+               "<option value='0'";
+    if (cur == N2K_NONE) h += " selected";
+    h += ">-- None --</option>";
+    for (int i = 0; i < n2k_all_fields_count; ++i) {
+        N2kField f = n2k_all_fields[i];
+        h += "<option value='" + String((int)f) + "'";
+        if (f == cur) h += " selected";
+        h += ">" + String(n2k_field_label(f)) + "</option>";
+    }
+    h += "</select>";
+    return h;
+}
+
+// Overload for String-based current values (gauge signalk_paths[])
+static String n2k_select(const String& formName, const String& currentVal) {
+    return n2k_select(formName, currentVal.c_str());
+}
 
 static void scan_sd_assets() {
     g_iconFiles.clear();
@@ -341,6 +409,7 @@ void save_preferences(bool skip_screen_blobs = false) {
         preferences.putString("password", saved_password);
         preferences.putString("signalk_ip", saved_signalk_ip);
         preferences.putString("hostname", saved_hostname);
+        preferences.putString("own_mmsi", saved_own_mmsi);
         preferences.putUShort("signalk_port", saved_signalk_port);
         // Persist device settings
         preferences.putUShort("buzzer_mode", (uint16_t)buzzer_mode);
@@ -542,6 +611,7 @@ void load_preferences() {
         saved_signalk_ip = preferences.getString("signalk_ip", "openplotter.local");
         saved_signalk_port = preferences.getUShort("signalk_port", 0);
         saved_hostname = preferences.getString("hostname", "");
+        saved_own_mmsi = preferences.getString("own_mmsi", "");
         // Load auto-scroll interval (seconds)
         auto_scroll_sec = preferences.getUShort("auto_scroll", 0);
         unit_system = (UnitSystem)preferences.getUShort("unit_system", (uint16_t)UNIT_NAUTICAL_METRIC);
@@ -782,6 +852,7 @@ void handle_gauges_page() {
     // shell response alone can drop iRAM below the threshold needed for the
     // subsequent AJAX fragment fetches, causing a crash.
     pause_signalk_ws();
+    pause_n2k_updates();
 
     Serial.printf("[GAUGES] shell handler, iRAM=%u\n",
         heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
@@ -821,10 +892,10 @@ void handle_gauges_page() {
     // Test mode toggle — AJAX, no full page reload
     html += "<div style='margin-bottom:16px;text-align:center;'>";
     html += "<button type='button' id='testModeBtn' onclick='toggleTestMode()' style='padding:8px 16px;font-size:1em;'>";
-    html += (test_mode ? "Disable Setup Mode" : "Enable Setup Mode");
+    html += (test_mode ? "Disable Test Mode" : "Enable Test Mode");
     html += "</button> ";
     html += "<span id='testModeLabel' style='font-weight:bold;color:";
-    html += (test_mode ? "#388e3c;'>SETUP MODE ON" : "#b71c1c;'>SETUP MODE OFF");
+    html += (test_mode ? "#388e3c;'>TEST MODE ON" : "#b71c1c;'>TEST MODE OFF");
     html += "</span></div>";
     // Form wrapper — screen content is injected inside via AJAX
     html += "<form id='calibrationForm' method='POST' action='/save-gauges' accept-charset='utf-8'>";
@@ -872,7 +943,7 @@ void handle_gauges_page() {
     html += "    .then(function(r){return r.text();})\n";
     html += "    .then(function(h){\n";
     html += "      cont.innerHTML=h;\n";
-    html += "      setTimeout(function(){initScreenTab(idx);},10);\n";
+    html += "      initScreenTab(idx);\n";
     html += "    })\n";
     html += "    .catch(function(e){\n";
     html += "      cont.innerHTML='<p style=\"color:red;text-align:center;\">Failed to load – '+e+'</p>';\n";
@@ -888,8 +959,8 @@ void handle_gauges_page() {
     html += "function toggleGaugeConfig(screen){\n";
     html += "  var sel=document.getElementById('displaytype_'+screen);\n";
     html += "  if(!sel) return;\n";
-    html += "  var divIds=['gaugeconfig','numberconfig','dualconfig','quadconfig','gaugenumconfig','graphconfig','compassconfig','positionconfig','aisconfig','anchorconfig'];\n";
-    html += "  var typeMap={'0':['gaugeconfig'],'1':['numberconfig'],'2':['dualconfig'],'3':['quadconfig'],'4':['gaugeconfig','gaugenumconfig'],'5':['graphconfig'],'6':['compassconfig'],'7':['positionconfig'],'8':['aisconfig'],'9':['anchorconfig']};\n";
+    html += "  var divIds=['gaugeconfig','numberconfig','dualconfig','quadconfig','gaugenumconfig','graphconfig','compassconfig','positionconfig','aisconfig','attitudeconfig','anchorconfig'];\n";
+    html += "  var typeMap={'0':['gaugeconfig'],'1':['numberconfig'],'2':['dualconfig'],'3':['quadconfig'],'4':['gaugeconfig','gaugenumconfig'],'5':['graphconfig'],'6':['compassconfig'],'7':['positionconfig'],'8':['aisconfig'],'9':['attitudeconfig'],'10':['anchorconfig']};\n";
     html += "  var show=typeMap[sel.value]||[];\n";
     html += "  divIds.forEach(function(d){\n";
     html += "    var el=document.getElementById(d+'_'+screen);\n";
@@ -901,9 +972,11 @@ void handle_gauges_page() {
     html += "    var ccOpt=bgSel.querySelector(\"option[value='Custom Color']\");\n";
     html += "    var isGauge=(sel.value==='0'||sel.value==='4');\n";
     html += "    if(ccOpt){ccOpt.hidden=isGauge;ccOpt.disabled=isGauge;if(isGauge&&bgSel.value==='Custom Color')bgSel.value=bgSel.options[0].value;}\n";
-    // Hide entire Background dropdown for AIS/Anchor (has its own colour picker / no bg)
-    html += "    var isAIS=(sel.value==='8'||sel.value==='9');\n";
-    html += "    bgSel.parentElement.parentElement.style.display=isAIS?'none':'block';\n";
+    // Hide entire Background dropdown for AIS/Attitude/Anchor (has its own colour picker / no bg)
+    html += "    var isAIS=(sel.value==='8');\n";
+    html += "    var isATT=(sel.value==='9');\n";
+    html += "    var isANC=(sel.value==='10');\n";
+    html += "    bgSel.parentElement.parentElement.style.display=(isAIS||isATT||isANC)?'none':'block';\n";
     html += "  }\n";
     html += "  toggleBgImageColor(screen);\n";
     html += "}\n";
@@ -944,13 +1017,18 @@ void handle_gauges_page() {
     html += "    var btn=document.getElementById('testModeBtn');\n";
     html += "    var lbl=document.getElementById('testModeLabel');\n";
     html += "    if(j.test_mode){\n";
-    html += "      if(btn)btn.textContent='Disable Setup Mode';\n";
-    html += "      if(lbl){lbl.style.color='#388e3c';lbl.textContent='SETUP MODE ON';}\n";
+    html += "      if(btn)btn.textContent='Disable Test Mode';\n";
+    html += "      if(lbl){lbl.style.color='#388e3c';lbl.textContent='TEST MODE ON';}\n";
     html += "    } else {\n";
-    html += "      if(btn)btn.textContent='Enable Setup Mode';\n";
-    html += "      if(lbl){lbl.style.color='#b71c1c';lbl.textContent='SETUP MODE OFF';}\n";
+    html += "      if(btn)btn.textContent='Enable Test Mode';\n";
+    html += "      if(lbl){lbl.style.color='#b71c1c';lbl.textContent='TEST MODE OFF';}\n";
     html += "    }\n";
-    html += "    var prev=currentTab; currentTab=-1; showScreenTab(prev>=0?prev:0);\n";
+    html += "    var testBtns=document.querySelectorAll('button[onclick^=\"testGaugePoint\"]');\n";
+    html += "    for(var i=0;i<testBtns.length;i++){\n";
+    html += "      testBtns[i].disabled = !j.test_mode;\n";
+    html += "      testBtns[i].style.backgroundColor = j.test_mode ? '#4a90e2' : '#cccccc';\n";
+    html += "      testBtns[i].style.cursor = j.test_mode ? 'pointer' : 'not-allowed';\n";
+    html += "    }\n";
     html += "  }).catch(function(e){console.error(e);});\n";
     html += "}\n";
 
@@ -964,8 +1042,11 @@ void handle_gauges_page() {
     html += "  .catch(function(e){console.error(e);});\n";
     html += "}\n";
 
-    // Keepalive: ping every 8s so the 60s idle watchdog doesn't resume WS
+    // Keepalive: ping every 8s so the idle watchdog doesn't resume prematurely
     html += "setInterval(function(){fetch('/gauges/ping').catch(function(){});},8000);\n";
+    // Immediate resume when user navigates away or closes the page
+    html += "window.addEventListener('pagehide',function(){navigator.sendBeacon('/gauges/close');});\n";
+    html += "window.addEventListener('beforeunload',function(){navigator.sendBeacon('/gauges/close');});\n";
 
     // Load first tab on page load
     html += "document.addEventListener('DOMContentLoaded',function(){\n";
@@ -996,6 +1077,7 @@ void handle_gauges_screen() {
     // per fragment, that thrashes TCP buffers and wastes iRAM.
     g_config_page_last_seen = millis();
     pause_signalk_ws();           // no-op if already paused
+    pause_n2k_updates();          // no-op if already paused
 
     // NOTE: ui_set_screen() is called AFTER the HTTP response completes
     // (see bottom of this function) to avoid LVGL DMA flushes during TCP sends.
@@ -1040,8 +1122,8 @@ void handle_gauges_screen() {
 
     // Display Type dropdown
     html += "<div style='margin-bottom:16px;'><label>Display Type: <select name='displaytype_" + String(s) + "' id='displaytype_" + String(s) + "' onchange='toggleGaugeConfig(" + String(s) + ")'>";
-    const char* dtNames[] = {"Gauge","Number","Dual","Quad","Gauge + Number","Graph","Compass","Position","AIS","Anchor Alarm"};
-    for (int dt = 0; dt < 10; ++dt) {
+    const char* dtNames[] = {"Gauge","Number","Dual","Quad","Gauge + Number","Graph","Compass","Position","AIS","Attitude","Anchor Alarm"};
+    for (int dt = 0; dt < 11; ++dt) {
         html += "<option value='" + String(dt) + "'";
         if (screen_configs[s].display_type == dt) html += " selected";
         html += ">" + String(dtNames[dt]) + "</option>";
@@ -1077,7 +1159,7 @@ void handle_gauges_screen() {
     bool isCustomColor = (String(screen_configs[s].background_path) == "Custom Color");
     html += "<div id='numberconfig_" + String(s) + "' style='display:" + String(screen_configs[s].display_type == 1 ? "block" : "none") + ";'>";
     html += "<h4>Number Display Settings</h4>";
-    html += "<div style='margin-bottom:8px;'><label>SignalK Path: <input name='number_path_" + String(s) + "' type='text' value='" + String(screen_configs[s].number_path) + "' style='width:80%'></label></div>";
+    html += "<div style='margin-bottom:8px;'><label>NMEA 2000 Field: " + n2k_select("number_path_" + String(s), screen_configs[s].number_path) + "</label></div>";
     html += "<div id='number_bg_color_div_" + String(s) + "' style='margin-bottom:8px;display:" + String(isCustomColor ? "block" : "none") + ";'>";
     html += "<label>Background Color: <input name='number_bg_color_" + String(s) + "' type='color' value='" + String(screen_configs[s].number_bg_color[0] ? screen_configs[s].number_bg_color : "#000000") + "'></label></div>";
     html += "<div style='margin-bottom:8px;'><label>Font Size: <select name='number_font_size_" + String(s) + "'>";
@@ -1101,24 +1183,18 @@ void handle_gauges_screen() {
     flushHtml();
 
     // ── Compass config ───────────────────────────────────────────────
-    bool isMag = (String(screen_configs[s].number_path) == "navigation.headingMagnetic" ||
-                  String(screen_configs[s].number_path).length() == 0);
     html += "<div id='compassconfig_" + String(s) + "' style='display:" + String(screen_configs[s].display_type == DISPLAY_TYPE_COMPASS ? "block" : "none") + ";'>";
     html += "<h4>Compass Settings</h4>";
     html += "<div style='margin-bottom:8px;'><label>Background Color: <input name='compass_bg_color_" + String(s) + "' type='color' value='" + String(screen_configs[s].number_bg_color[0] ? screen_configs[s].number_bg_color : "#000000") + "'></label></div>";
-    html += "<div style='margin-bottom:8px;'>";
-    html += "<label style='margin-right:16px;'><input type='radio' name='compass_hdg_src_" + String(s) + "' value='navigation.headingMagnetic'";
-    if (isMag) html += " checked";
-    html += "> Magnetic (HDG &deg;M)</label>";
-    html += "<label><input type='radio' name='compass_hdg_src_" + String(s) + "' value='navigation.headingTrue'";
-    if (!isMag) html += " checked";
-    html += "> True (HDG &deg;T)</label></div>";
+    html += "<div style='margin-bottom:8px;'><em>Heading data from NMEA 2000 PGN 127250 (Vessel Heading)</em></div>";
+    // Hidden field so save handler always gets a value for compass heading
+    html += "<input type='hidden' name='compass_hdg_src_" + String(s) + "' value='" + String((int)N2K_HEADING) + "'>";
     // Compass extra data fields — use compass_bl_*/compass_br_* names to avoid
     // clashing with the identically-named inputs in the Quad config section.
     html += "<h4>Extra Data Fields</h4><div style='display:flex;gap:16px;flex-wrap:wrap;'>";
     // BL
     html += "<div style='flex:1;min-width:200px;'><h5>Bottom-Left</h5>";
-    html += "<div style='margin-bottom:4px;'><label>SignalK Path: <input name='compass_bl_path_" + String(s) + "' type='text' value='" + String(screen_configs[s].quad_bl_path) + "' style='width:90%'></label></div>";
+    html += "<div style='margin-bottom:4px;'><label>NMEA 2000 Field: " + n2k_select("compass_bl_path_" + String(s), screen_configs[s].quad_bl_path) + "</label></div>";
     html += "<div style='margin-bottom:4px;'><label>Font Size: <select name='compass_bl_font_size_" + String(s) + "'>";
     html += "<option value='0'" + String(screen_configs[s].quad_bl_font_size == 0 ? " selected" : "") + ">Small (48pt)</option>";
     html += "<option value='1'" + String(screen_configs[s].quad_bl_font_size == 1 ? " selected" : "") + ">Medium (72pt)</option>";
@@ -1127,7 +1203,7 @@ void handle_gauges_screen() {
     html += "<div style='margin-bottom:4px;'><label>Font Color: <input name='compass_bl_font_color_" + String(s) + "' type='color' value='" + String(screen_configs[s].quad_bl_font_color[0] ? screen_configs[s].quad_bl_font_color : "#FFFFFF") + "'></label></div></div>";
     // BR
     html += "<div style='flex:1;min-width:200px;'><h5>Bottom-Right</h5>";
-    html += "<div style='margin-bottom:4px;'><label>SignalK Path: <input name='compass_br_path_" + String(s) + "' type='text' value='" + String(screen_configs[s].quad_br_path) + "' style='width:90%'></label></div>";
+    html += "<div style='margin-bottom:4px;'><label>NMEA 2000 Field: " + n2k_select("compass_br_path_" + String(s), screen_configs[s].quad_br_path) + "</label></div>";
     html += "<div style='margin-bottom:4px;'><label>Font Size: <select name='compass_br_font_size_" + String(s) + "'>";
     html += "<option value='0'" + String(screen_configs[s].quad_br_font_size == 0 ? " selected" : "") + ">Small (48pt)</option>";
     html += "<option value='1'" + String(screen_configs[s].quad_br_font_size == 1 ? " selected" : "") + ">Medium (72pt)</option>";
@@ -1144,7 +1220,7 @@ void handle_gauges_screen() {
     html += "<label>Background Color: <input name='dual_bg_color_" + String(s) + "' type='color' value='" + String(screen_configs[s].number_bg_color[0] ? screen_configs[s].number_bg_color : "#000000") + "'></label></div>";
     // Top
     html += "<h5>Top Display</h5>";
-    html += "<div style='margin-bottom:8px;'><label>SignalK Path: <input name='dual_top_path_" + String(s) + "' type='text' value='" + String(screen_configs[s].dual_top_path) + "' style='width:80%'></label></div>";
+    html += "<div style='margin-bottom:8px;'><label>NMEA 2000 Field: " + n2k_select("dual_top_path_" + String(s), screen_configs[s].dual_top_path) + "</label></div>";
     html += "<div style='margin-bottom:8px;'><label>Font Size: <select name='dual_top_font_size_" + String(s) + "'>";
     for (int fs = 0; fs < 5; fs++) {
         const char* fsNames[] = {"Small (48pt)","Medium (72pt)","Large (96pt)","X-Large (120pt)","XX-Large (144pt)"};
@@ -1167,7 +1243,7 @@ void handle_gauges_screen() {
     flushHtml();
     // Bottom
     html += "<h5>Bottom Display</h5>";
-    html += "<div style='margin-bottom:8px;'><label>SignalK Path: <input name='dual_bottom_path_" + String(s) + "' type='text' value='" + String(screen_configs[s].dual_bottom_path) + "' style='width:80%'></label></div>";
+    html += "<div style='margin-bottom:8px;'><label>NMEA 2000 Field: " + n2k_select("dual_bottom_path_" + String(s), screen_configs[s].dual_bottom_path) + "</label></div>";
     html += "<div style='margin-bottom:8px;'><label>Font Size: <select name='dual_bottom_font_size_" + String(s) + "'>";
     for (int fs = 0; fs < 5; fs++) {
         const char* fsNames[] = {"Small (48pt)","Medium (72pt)","Large (96pt)","X-Large (120pt)","XX-Large (144pt)"};
@@ -1197,7 +1273,7 @@ void handle_gauges_screen() {
     // Quad quadrant helper
     auto addQuadrantHTML = [&](const char* name, const char* label, char* path, uint8_t size, char* color, int g_alm, int zl, int zh) {
         html += "<h5>" + String(label) + "</h5>";
-        html += "<div style='margin-bottom:4px;'><label>SignalK Path: <input name='quad_" + String(name) + "_path_" + String(s) + "' type='text' value='" + String(path) + "' style='width:80%'></label></div>";
+        html += "<div style='margin-bottom:4px;'><label>NMEA 2000 Field: " + n2k_select("quad_" + String(name) + "_path_" + String(s), path) + "</label></div>";
         html += "<div style='margin-bottom:4px;'><label>Font Size: <select name='quad_" + String(name) + "_font_size_" + String(s) + "'>";
         for (int fs = 0; fs < 3; fs++) {
             const char* n[] = {"Small (48pt)","Medium (72pt)","Large (96pt)"};
@@ -1242,7 +1318,7 @@ void handle_gauges_screen() {
             continue;
         }
         html += "<b>" + String(g == 0 ? "Top Gauge" : "Bottom Gauge") + "</b>";
-        html += "<div style='margin-bottom:8px;'><label>SignalK Path: <input name='skpath_" + String(s) + "_" + String(g) + "' type='text' value='" + signalk_paths[idx] + "' style='width:80%'></label></div>";
+        html += "<div style='margin-bottom:8px;'><label>NMEA 2000 Field: " + n2k_select("skpath_" + String(s) + "_" + String(g), signalk_paths[idx]) + "</label></div>";
         // Calibration points
         html += "<table class='table'><tr><th>Point</th><th>Angle</th><th>Value</th><th>Test</th></tr>";
         for (int p = 0; p < 5; ++p) {
@@ -1314,7 +1390,7 @@ void handle_gauges_screen() {
     // ── Gauge + Number config ────────────────────────────────────────
     html += "<div id='gaugenumconfig_" + String(s) + "' style='display:" + String(screen_configs[s].display_type == 4 ? "block" : "none") + ";'>";
     html += "<h4>Center Number Display</h4>";
-    html += "<div style='margin-bottom:8px;'><label>SignalK Path: <input name='gauge_num_center_path_" + String(s) + "' type='text' value='" + String(screen_configs[s].gauge_num_center_path) + "' style='width:80%'></label></div>";
+    html += "<div style='margin-bottom:8px;'><label>NMEA 2000 Field: " + n2k_select("gauge_num_center_path_" + String(s), screen_configs[s].gauge_num_center_path) + "</label></div>";
     html += "<div style='margin-bottom:8px;'><label>Font Size: <select name='gauge_num_center_font_size_" + String(s) + "'>";
     for (int fs = 0; fs < 5; fs++) {
         const char* fsNames[] = {"Small (48pt)","Medium (72pt)","Large (96pt)","X-Large (120pt)","XX-Large (144pt)"};
@@ -1340,7 +1416,7 @@ void handle_gauges_screen() {
     // ── Graph config ─────────────────────────────────────────────────
     html += "<div id='graphconfig_" + String(s) + "' style='display:" + String(screen_configs[s].display_type == 5 ? "block" : "none") + ";'>";
     html += "<h4>Graph Display Settings</h4>";
-    html += "<div style='margin-bottom:8px;'><label>SignalK Path: <input name='graph_path_1_" + String(s) + "' type='text' value='" + String(screen_configs[s].number_path) + "' style='width:80%'></label></div>";
+    html += "<div style='margin-bottom:8px;'><label>NMEA 2000 Field: " + n2k_select("graph_path_1_" + String(s), screen_configs[s].number_path) + "</label></div>";
     html += "<div style='margin-bottom:8px;'><label>Chart Type: <select name='graph_chart_type_" + String(s) + "'>";
     const char* ctNames[] = {"Line Chart","Bar Chart","Scatter Plot"};
     for (int ct = 0; ct < 3; ct++) {
@@ -1359,7 +1435,7 @@ void handle_gauges_screen() {
     html += "</select></label></div>";
     html += "<div style='margin-bottom:8px;'><label>Series 1 Color: <input name='graph_color_1_" + String(s) + "' type='color' value='" + String(screen_configs[s].number_font_color[0] ? screen_configs[s].number_font_color : "#00FF00") + "'></label></div>";
     html += "<h5 style='margin-top:16px;'>Second Data Series (Optional)</h5>";
-    html += "<div style='margin-bottom:8px;'><label>SignalK Path 2: <input name='graph_path_2_" + String(s) + "' type='text' value='" + String(screen_configs[s].graph_path_2) + "' style='width:80%'></label></div>";
+    html += "<div style='margin-bottom:8px;'><label>NMEA 2000 Field 2: " + n2k_select("graph_path_2_" + String(s), screen_configs[s].graph_path_2) + "</label></div>";
     html += "<div style='margin-bottom:8px;'><label>Series 2 Color: <input name='graph_color_2_" + String(s) + "' type='color' value='" + String(screen_configs[s].graph_color_2[0] ? screen_configs[s].graph_color_2 : "#FF0000") + "'></label></div>";
     bool isCustomColorGraph = (String(screen_configs[s].background_path) == "Custom Color");
     html += "<div id='graph_bg_color_div_" + String(s) + "' style='margin-bottom:8px;display:" + String(isCustomColorGraph ? "block" : "none") + ";'>";
@@ -1391,8 +1467,8 @@ void handle_gauges_screen() {
     html += "<div id='aisconfig_" + String(s) + "' style='display:" + String(screen_configs[s].display_type == 8 ? "block" : "none") + ";'>";
     html += "<h4>AIS Radar Settings</h4>";
     html += "<div style='margin-bottom:8px;'><label>Range: <select name='ais_range_" + String(s) + "'>";
-    const char* aisRangeNames[] = {"0.5 NM","1 NM","2 NM","5 NM","10 NM","20 NM"};
-    for (int ar = 0; ar < 6; ar++) {
+    const char* aisRangeNames[] = {"0.1 NM","0.5 NM","1 NM","2 NM","5 NM","10 NM","20 NM"};
+    for (int ar = 0; ar < 7; ar++) {
         html += "<option value='" + String(ar) + "'";
         if (screen_configs[s].graph_time_range == ar) html += " selected";
         html += ">" + String(aisRangeNames[ar]) + "</option>";
@@ -1401,19 +1477,27 @@ void handle_gauges_screen() {
     html += "<div style='margin-bottom:8px;'>";
     html += "<label>Background Colour: <input name='ais_bg_color_" + String(s) + "' type='color' value='" + String(screen_configs[s].number_bg_color[0] ? screen_configs[s].number_bg_color : "#001020") + "'></label></div>";
     html += "</div>"; // close aisconfig
+    flushHtml();
+
+    // ── Attitude Display config ───────────────────────────────────────
+    html += "<div id='attitudeconfig_" + String(s) + "' style='display:" + String(screen_configs[s].display_type == 9 ? "block" : "none") + ";'>";
+    html += "<h4>Attitude Indicator Settings</h4>";
+    html += "<p style='color:#aaa;'>Uses NMEA 2000 PGN 127257 attitude data (heel/pitch sensor, autopilot, or MFD).</p>";
+    html += "<p style='color:#aaa;'><b>Set Level</b> &mdash; snaps the current reading as the zero reference. <b>Clear Level</b> &mdash; removes the offset and uses raw N2K data.</p>";
+    html += "<div style='display:flex;gap:12px;margin-bottom:8px;'>";
+    html += "<button type='button' style='padding:8px 20px;font-size:16px;' onclick=\"fetch('/api/imu_calibrate',{method:'POST'}).then(r=>r.text()).then(t=>alert(t))\">Set Level</button>";
+    html += "<button type='button' style='padding:8px 20px;font-size:16px;' onclick=\"fetch('/api/imu_clear',{method:'POST'}).then(r=>r.text()).then(t=>alert(t))\">Clear Level</button>";
+    html += "</div>";
+    html += "</div>"; // close attitudeconfig
 
     // ── Anchor Alarm config ───────────────────────────────────────────────
-    html += "<div id='anchorconfig_" + String(s) + "' style='display:" + String(screen_configs[s].display_type == 9 ? "block" : "none") + ";'>";
+    html += "<div id='anchorconfig_" + String(s) + "' style='display:" + String(screen_configs[s].display_type == 10 ? "block" : "none") + ";'>";
     html += "<h4>Anchor Alarm Settings</h4>";
-    html += "<p style='color:#aaa;'>Use <b>Drop Here</b> to drop the anchor at the current GPS position. Use [&minus;]/[+] to adjust the alarm radius (10&ndash;95&nbsp;m). Use the <b>&uarr;&darr;&larr;&rarr;</b> d-pad buttons to nudge the anchor position. Arm/disarm the buzzer with the ALARM button.</p>";
-    html += "<p style='color:#aaa;'><b>Signal K paths used:</b><br>"
-            "&bull; <code>navigation.position</code> &mdash; GPS lat/lon<br>"
-            "&bull; <code>navigation.courseOverGroundTrue</code> &mdash; COG (radians)<br>"
-            "&bull; <code>navigation.speedOverGround</code> &mdash; SOG (m/s)<br>"
-            "Anchor position and radius are saved to device flash (NVS) and restored on reboot.</p>";
+    html += "<p style='color:#aaa;'>Tap the map to place the anchor, or use <b>Drop Here</b> to drop at the current boat position. Use [&minus;]/[+] to adjust the alarm radius. Arm/disarm the alarm with the ALARM button.</p>";
+    html += "<p style='color:#aaa;'>GPS position is required (NMEA 2000 PGN 129025/129029). Track history is stored in RAM and lost on reboot.</p>";
     html += "</div>"; // close anchorconfig
-
     flushHtml();
+
     config_server.sendContent(""); // chunked terminator
     Serial.printf("[GAUGES] fragment s=%d complete, iRAM=%u\n", s,
         heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
@@ -1674,10 +1758,15 @@ void handle_save_gauges() {
                         }
                     };
                     
-                    saveQuadrant("tl", screen_configs[s].quad_tl_path, screen_configs[s].quad_tl_font_size, screen_configs[s].quad_tl_font_color);
-                    saveQuadrant("tr", screen_configs[s].quad_tr_path, screen_configs[s].quad_tr_font_size, screen_configs[s].quad_tr_font_color);
-                    saveQuadrant("bl", screen_configs[s].quad_bl_path, screen_configs[s].quad_bl_font_size, screen_configs[s].quad_bl_font_color);
-                    saveQuadrant("br", screen_configs[s].quad_br_path, screen_configs[s].quad_br_font_size, screen_configs[s].quad_br_font_color);
+                    // Only apply quad form fields for actual Quad screens — the quad div
+                    // is hidden for Compass screens but its inputs still get POSTed,
+                    // which would overwrite the compass BL/BR settings.
+                    if (screen_configs[s].display_type == DISPLAY_TYPE_QUAD) {
+                        saveQuadrant("tl", screen_configs[s].quad_tl_path, screen_configs[s].quad_tl_font_size, screen_configs[s].quad_tl_font_color);
+                        saveQuadrant("tr", screen_configs[s].quad_tr_path, screen_configs[s].quad_tr_font_size, screen_configs[s].quad_tr_font_color);
+                        saveQuadrant("bl", screen_configs[s].quad_bl_path, screen_configs[s].quad_bl_font_size, screen_configs[s].quad_bl_font_color);
+                        saveQuadrant("br", screen_configs[s].quad_br_path, screen_configs[s].quad_br_font_size, screen_configs[s].quad_br_font_color);
+                    }
                     
                     // Save gauge+number display settings
                     String gaugeNumCenterPathKey = "gauge_num_center_path_" + String(s);
@@ -1867,6 +1956,7 @@ void handle_save_gauges() {
         // Pausing here guarantees ~22 KB headroom for SDMMC DMA on every save.
         // A short yield after the pause lets lwIP free any remaining TCP buffers.
         pause_signalk_ws();
+        pause_n2k_updates();
         {
             const size_t IRAM_MIN_FOR_SD = 20 * 1024;
             size_t iram_free = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
@@ -2031,6 +2121,7 @@ void handle_root() {
     html += "<button class='tab-btn' onclick=\"location.href='/device'\">Device Settings</button>";
     html += "<button class='tab-btn' onclick=\"location.href='/update'\">Firmware Update</button>";
     html += "</div>"; // root-actions
+    html += "<div style='text-align:center;margin-top:18px;font-size:0.8em;color:#888;'>Firmware: " + String(FW_VERSION) + "</div>";
     html += "</div>"; // tab-content
     html += "</div></body></html>";
     config_server.send(200, "text/html", html);
@@ -2090,8 +2181,7 @@ void handle_network_page() {
     html += "<div id='scanResults' style='margin:0 0 10px 148px;display:none'></div>";
     html += "<div class='form-row'><label>Password:</label><input name='password' type='password' value='" + saved_password + "'></div>";
 
-    html += "<div class='form-row'><label>SignalK Server:</label><input name='signalk_ip' type='text' value='" + saved_signalk_ip + "'></div>";
-    html += "<div class='form-row'><label>SignalK Port:</label><input name='signalk_port' type='number' value='" + String(saved_signalk_port) + "'></div>";
+    html += "<div class='form-row'><label>NMEA 2000:</label><span style='color:#4a4;font-weight:bold'>CAN Bus (TX=" + String(CAN_TX_PIN) + ", RX=" + String(CAN_RX_PIN) + ")</span></div>";
 
     html += "<div class='form-row'><label>ESP32 Hostname:</label><input name='hostname' type='text' value='" + saved_hostname + "'></div>";
     html += "<div style='text-align:center;margin-top:12px;'><button class='tab-btn' type='submit' style='padding:10px 18px;'>Save & Reboot</button></div>";
@@ -2193,13 +2283,38 @@ void handle_device_page() {
     html += "<option value='10'" + String(screen_off_timeout_min==10?" selected":"") + ">10 min</option>";
     html += "<option value='30'" + String(screen_off_timeout_min==30?" selected":"") + ">30 min</option>";
     html += "</select></div>";
-    // Brightness
-    html += "<div class='form-row'><label>Brightness:</label><select name='brightness_lv'>";
-    html += "<option value='0'" + String(brightness_level==0?" selected":"") + ">Normal</option>";
-    html += "<option value='1'" + String(brightness_level==1?" selected":"") + ">Dim</option>";
-    html += "<option value='2'" + String(brightness_level==2?" selected":"") + ">Night</option>";
-    html += "<option value='3'" + String(brightness_level==3?" selected":"") + ">Night+</option>";
-    html += "</select></div>";
+    // Brightness — V4: unified slider (10-200, with red mode below 110), V3: 4-step slider
+    if (is_board_v4()) {
+        html += "<div class='form-row'><label>Brightness:</label>";
+        html += "<input type='range' name='brightness_lv' min='10' max='200' value='" + String(brightness_level) + "'";
+        html += " oninput='var v=parseInt(this.value),s=this.nextElementSibling;";
+        html += "if(v>=110){var f=(v-110)/90;var p=Math.round(10+f*f*90);s.textContent=p+\"%\";s.style.color=\"#111\";}";
+        html += "else{var f=(v-10)/99;var p=Math.round(10+f*f*90);s.textContent=\"R:\"+p+\"%\";s.style.color=\"#f44\";}' style='width:120px;vertical-align:middle;'>";
+        {
+            float frac;
+            int pwm;
+            if (brightness_level >= 110) {
+                frac = (float)(brightness_level - 110) / 90.0f;
+            } else {
+                frac = (float)(brightness_level - 10) / 99.0f;
+            }
+            pwm = 10 + (int)(frac * frac * 90.0f);
+            if (brightness_level >= 110) {
+                html += "<span style='margin-left:8px;color:#111;'>" + String(pwm) + "%</span>";
+            } else {
+                html += "<span style='margin-left:8px;color:#f44;'>R:" + String(pwm) + "%</span>";
+            }
+        }
+        html += "</div>";
+    } else {
+        static const char *blabels[] = {"Normal", "Dim", "Night", "Night+"};
+        html += "<div class='form-row'><label>Brightness:</label>";
+        html += "<input type='range' name='brightness_lv' min='0' max='3' value='" + String(brightness_level) + "'";
+        html += " oninput='this.nextElementSibling.textContent=[\"Normal\",\"Dim\",\"Night\",\"Night+\"][this.value]'";
+        html += " style='width:120px;vertical-align:middle;'>";
+        html += "<span style='margin-left:8px;color:#fff;'>" + String(blabels[brightness_level < 4 ? brightness_level : 0]) + "</span>";
+        html += "</div>";
+    }
     // Unit system
     html += "<div class='form-row'><label>Units:</label><select name='unit_system'>";
     html += "<option value='0'" + String(unit_system==UNIT_METRIC?" selected":"") + ">Metric</option>";
@@ -2209,6 +2324,8 @@ void handle_device_page() {
     html += "<option value='4'" + String(unit_system==UNIT_NAUTICAL_IMP_US?" selected":"") + ">Nautical Imperial US</option>";
     html += "<option value='5'" + String(unit_system==UNIT_NAUTICAL_IMP_UK?" selected":"") + ">Nautical Imperial UK</option>";
     html += "</select></div>";
+    // Own MMSI for AIS self-filtering
+    html += "<div class='form-row'><label>Own MMSI:</label><input name='own_mmsi' type='text' maxlength='9' placeholder='e.g. 123456789' value='" + saved_own_mmsi + "'></div>";
     html += "<div id='unit-summary' style='margin:10px 0;padding:8px 12px;background:#1a1a2e;border-radius:6px;font-size:13px;color:#ccc;line-height:1.6;'></div>";
     html += "<script>"
            "var us=document.querySelector('select[name=unit_system]'),ud=document.getElementById('unit-summary');"
@@ -2258,13 +2375,23 @@ void handle_save_device() {
 
         // Brightness level
         uint8_t bl = (uint8_t)config_server.arg("brightness_lv").toInt();
-        if (bl > 3) bl = 0;
+        if (is_board_v4()) {
+            int bl_raw = config_server.arg("brightness_lv").toInt();
+            if (bl_raw > 200) bl_raw = 200;
+            if (bl_raw < 10) bl_raw = 10;
+            bl = (uint8_t)bl_raw;
+        } else {
+            if (bl > 3) bl = 0;
+        }
         set_brightness_level(bl);
 
         // Unit system
         uint16_t us = (uint16_t)config_server.arg("unit_system").toInt();
         if (us > 5) us = 3; // default to nautical metric
         unit_system = (UnitSystem)us;
+
+        // Own MMSI
+        saved_own_mmsi = config_server.arg("own_mmsi");
 
         // Persist settings
         save_preferences();
@@ -2392,8 +2519,10 @@ void setup_network() {
         // Silence buzzer during WiFi wait — setup() may have left BEE_EN/PIN6
         // HIGH if the I2C expander direction write failed after a crash-reboot.
         if (is_board_v4()) {
-            Set_EXIOS(Read_EXIOS(exio_output_reg()) & (uint8_t)~(1 << (PIN_BEE_EN - 1)));
-            Mode_EXIO(PIN_BEE_EN, 1);
+            uint8_t cur_dir;
+            if (I2C_Read_EXIO_safe(exio_dir_reg(), &cur_dir) && cur_dir != CH32V003_DIR_SAFE) {
+                I2C_Write_EXIO(exio_dir_reg(), CH32V003_DIR_SAFE);
+            }
         } else {
             Set_EXIOS(Read_EXIOS(exio_output_reg()) & (uint8_t)~(1 << (EXIO_PIN6 - 1)));
             Mode_EXIOS(0x00);
@@ -2433,6 +2562,14 @@ void setup_network() {
         g_config_page_last_seen = millis();
         config_server.send(204);
     });
+    config_server.on("/gauges/close", []() {
+        Serial.println("[CFG] Config page closed (explicit), resuming");
+        g_config_page_last_seen = 0;
+        if (is_signalk_ws_paused() && !g_signalk_ws_resume_pending)
+            resume_signalk_ws();
+        resume_n2k_updates();
+        config_server.send(204);
+    });
     config_server.on("/gauges/screen", handle_gauges_screen);
     config_server.on("/save-gauges", HTTP_POST, handle_save_gauges);
     config_server.on("/needles", handle_needles_page);
@@ -2452,6 +2589,14 @@ void setup_network() {
     config_server.on("/nvs_test", HTTP_GET, handle_nvs_test);
     config_server.on("/update", HTTP_GET,  handle_ota_page);
     config_server.on("/update", HTTP_POST, handle_ota_post, handle_ota_upload);
+    config_server.on("/api/imu_calibrate", HTTP_POST, []() {
+        attitude_calibrate_level();
+        config_server.send(200, "text/plain", "Level set — current N2K attitude saved as zero reference.");
+    });
+    config_server.on("/api/imu_clear", HTTP_POST, []() {
+        attitude_clear_calibration();
+        config_server.send(200, "text/plain", "Level cleared — now using raw N2K attitude data.");
+    });
     config_server.begin();
     Serial.println("[WebServer] Configuration web UI started on port 80");
     // handleClient() is called from loop() on Core 1.
@@ -2536,11 +2681,6 @@ std::vector<String> get_signalk_paths_for_screen(int s) {
         case DISPLAY_TYPE_AIS:
             add("navigation.position");
             add("navigation.datetime");
-            add("navigation.courseOverGroundTrue");
-            add("navigation.speedOverGround");
-            break;
-        case DISPLAY_TYPE_ANCHOR:
-            add("navigation.position");
             add("navigation.courseOverGroundTrue");
             add("navigation.speedOverGround");
             break;
