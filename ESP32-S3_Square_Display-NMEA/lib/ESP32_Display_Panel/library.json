@@ -1,0 +1,8 @@
+{
+  "name": "ESP32_Display_Panel",
+  "version": "1.0.0",
+  "description": "ESP32_Display_Panel display driver library. Only the 3-wire SPI bus and ST7701 RGB LCD port files are compiled (patched for ESP-IDF 4.x compatibility).",
+  "build": {
+    "srcFilter": ["!<*>", "+<drivers/bus/port/esp_lcd_panel_io_3wire_spi.c>", "+<drivers/lcd/port/esp_lcd_st7701_rgb.c>"]
+  }
+}
