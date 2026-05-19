@@ -18,6 +18,8 @@ There is a NMEA2000 version now of the square display; more on this soon.
 
 It's all available for free here, try it, test, tell me what works.
 
+Case - For the Square Display can be found here https://makerworld.com/en/models/2821808-square-marine-display-enclosure 
+
 ![IMG_2602.jpg](https://github.com/Boatingwiththebaileys/Marine-Displays/blob/b56cb05db780b8a2692e31b83edfad973bb852f3/IMG_2602.jpg)
 
 Video of the round display - Building Custom Marine Displays with ESP32 & SignalK (Gauges, Dynamic Icons & Alerts)
