@@ -2639,6 +2639,7 @@ std::vector<String> get_all_signalk_paths() {
         for (int s = 0; s < NUM_SCREENS; s++) {
             if (screen_configs[s].display_type == DISPLAY_TYPE_POSITION) needs_nav = true;
             if (screen_configs[s].display_type == DISPLAY_TYPE_AIS) { needs_nav = true; needs_cog_sog = true; }
+            if (screen_configs[s].display_type == DISPLAY_TYPE_ANCHOR) { needs_nav = true; needs_cog_sog = true; }
         }
         if (needs_nav) {
             String nav_pos = "navigation.position";
