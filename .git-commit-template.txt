@@ -1,0 +1,19 @@
+# Commit title format:
+#   [Scope] Short imperative summary
+#
+# Scopes:
+#   [NMEA]   Changes only under ESP32-S3_Square_Display-NMEA/
+#   [SK]     Changes only under ESP32-S3_Square_Display/
+#   [Shared] Changes touch both SK and NMEA or common assets/tooling
+#   [Infra]  Build/repo/config/scripts not tied to one display app
+#
+# Examples:
+#   [NMEA] Add anchor alarm screen and touch controls
+#   [SK] Fix anchor COG/SOG subscription paths
+#   [Shared] Align screen config enum values across SK and NMEA
+#   [Infra] Add PlatformIO upload task aliases
+#
+# Optional body lines:
+#   Why:
+#   What changed:
+#   Validation:
