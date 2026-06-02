@@ -255,6 +255,7 @@ extern "C" void force_update_number_display(int screen_num) {
     float display_value = get_sensor_value_by_path(number_path);
     String unit_str = get_sensor_unit_by_path(number_path);
     String description = get_sensor_description_by_path(number_path);
+    { const char* cl = get_custom_label(screen_idx, 0); if (cl[0]) description = String(cl); }
     
     // Convert SI units to display units based on unit system preference
     display_value = convert_unit(display_value, unit_str, number_path, unit_str);
@@ -320,7 +321,9 @@ static void update_number_display_for_screen(int screen_num) {
         description = get_sensor_description_by_path(number_path);
         display_value = convert_unit(display_value, unit_str, number_path, unit_str);
     }
-    
+
+    // Apply custom label override if set
+    { const char* cl = get_custom_label(screen_idx, 0); if (cl[0]) description = String(cl); }
     // Create number display if it doesn't exist (note: may also be created externally via ui_hotupdate)
     if (!number_displays_created[screen_idx]) {
         number_display_create(screen_idx);
@@ -424,12 +427,14 @@ static void update_dual_number_display_for_screen(int screen_num) {
     String top_unit = "";
     String top_description = "";
     get_path_data(top_path, top_value, top_unit, top_description);
+    { const char* cl = get_custom_label(screen_idx, 0); if (cl[0]) top_description = String(cl); }
     
     // Get bottom display data
     float bottom_value = 0.0f;
     String bottom_unit = "";
     String bottom_description = "";
     get_path_data(bottom_path, bottom_value, bottom_unit, bottom_description);
+    { const char* cl = get_custom_label(screen_idx, 1); if (cl[0]) bottom_description = String(cl); }
     
     // Update both displays
     dual_number_display_update_top(screen_idx, 
@@ -518,9 +523,13 @@ static void update_quad_number_display_for_screen(int screen_num) {
     String tl_description, tr_description, bl_description, br_description;
     
     get_path_data(tl_path, tl_value, tl_unit, tl_description);
+    { const char* cl = get_custom_label(screen_idx, 0); if (cl[0]) tl_description = String(cl); }
     get_path_data(tr_path, tr_value, tr_unit, tr_description);
+    { const char* cl = get_custom_label(screen_idx, 1); if (cl[0]) tr_description = String(cl); }
     get_path_data(bl_path, bl_value, bl_unit, bl_description);
+    { const char* cl = get_custom_label(screen_idx, 2); if (cl[0]) bl_description = String(cl); }
     get_path_data(br_path, br_value, br_unit, br_description);
+    { const char* cl = get_custom_label(screen_idx, 3); if (cl[0]) br_description = String(cl); }
     
     // Update all quadrants
     quad_number_display_update_tl(screen_idx, isnan(tl_value) ? 0.0f : tl_value, tl_unit.c_str(), tl_description.c_str());
@@ -602,6 +611,7 @@ static void update_gauge_number_display_for_screen(int screen_num) {
     String center_unit = "";
     String center_description = "";
     get_path_data(center_path, center_value, center_unit, center_description);
+    { const char* cl = get_custom_label(screen_idx, 0); if (cl[0]) center_description = String(cl); }
     
     // Update center number display
     gauge_number_display_update_center(screen_idx, 
@@ -1210,6 +1220,7 @@ void setup() {
 
 void loop() {
     config_server.handleClient();
+    poll_wifi_scan();   // collect background WiFi scan results without blocking
 
     // --- Screen-off timeout ---------------------------------------------------
     // g_last_activity_ms is updated on every touch in Lvgl_Touchpad_Read().

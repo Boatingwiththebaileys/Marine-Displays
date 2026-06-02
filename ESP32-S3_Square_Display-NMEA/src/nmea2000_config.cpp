@@ -99,6 +99,7 @@ const char* n2k_field_label(N2kField f) {
         // Depth — PGN 128267
         case N2K_WATER_DEPTH:         return "Water Depth [128267]";
         case N2K_DEPTH_OFFSET:        return "Depth Offset [128267]";
+        case N2K_DEPTH_BELOW_KEEL:    return "Depth Below Keel [128267]";
         // Wind — PGN 130306
         case N2K_WIND_SPEED_APPARENT: return "Wind Speed Apparent [130306]";
         case N2K_WIND_ANGLE_APPARENT: return "Wind Angle Apparent [130306]";
@@ -214,6 +215,7 @@ const char* n2k_field_unit(N2kField f) {
         // Depth
         case N2K_WATER_DEPTH:         return "m_depth";
         case N2K_DEPTH_OFFSET:        return "m_depth";
+        case N2K_DEPTH_BELOW_KEEL:    return "m_depth";
         // Wind
         case N2K_WIND_SPEED_APPARENT: return "m/s";
         case N2K_WIND_ANGLE_APPARENT: return "";
@@ -315,6 +317,8 @@ N2kField n2k_field_from_path(const String& path) {
     if (path.indexOf("leewayAngle") >= 0)                return N2K_LEEWAY;
     if (path.indexOf("depth") >= 0 &&
         path.indexOf("offset") >= 0)                     return N2K_DEPTH_OFFSET;
+    if (path.indexOf("depth") >= 0 &&
+        path.indexOf("keel") >= 0)                       return N2K_DEPTH_BELOW_KEEL;
     if (path.indexOf("depth") >= 0)                      return N2K_WATER_DEPTH;
     // Wind
     if (path.indexOf("wind") >= 0 &&
@@ -399,7 +403,12 @@ static void route_value(N2kField field, float value) {
     if (unit[0]) {
         set_sensor_unit_by_path(key, String(unit));
     }
-    set_sensor_description_by_path(key, String(n2k_field_label(field)));
+    {
+        String lbl = String(n2k_field_label(field));
+        int bracket = lbl.lastIndexOf(" [");
+        if (bracket > 0) lbl = lbl.substring(0, bracket);
+        set_sensor_description_by_path(key, lbl);
+    }
 }
 
 // ── PGN Handlers ─────────────────────────────────────────────────────
@@ -583,6 +592,8 @@ static void handle_water_depth(const tN2kMsg& msg) {           // PGN 128267
     if (ParseN2kWaterDepth(msg, sid, depth, offset)) {
         if (!N2kIsNA(depth))  route_value(N2K_WATER_DEPTH, (float)depth);
         if (!N2kIsNA(offset)) route_value(N2K_DEPTH_OFFSET, (float)offset);
+        // Depth below keel = depth + offset (offset is negative when keel is below transducer)
+        if (!N2kIsNA(depth) && !N2kIsNA(offset)) route_value(N2K_DEPTH_BELOW_KEEL, (float)(depth + offset));
     }
 }
 

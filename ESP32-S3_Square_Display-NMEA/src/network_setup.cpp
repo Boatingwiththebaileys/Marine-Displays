@@ -235,6 +235,21 @@ String saved_hostname = "";
 String saved_own_mmsi = "";
 // 10 SignalK paths: [screen][gauge] => idx = s*2+g
 String signalk_paths[NUM_SCREENS * 2];
+
+// Custom display labels — up to 4 per screen, stored in /config/screen_labels.txt.
+// Slot mapping per screen (index = screen_idx * 4 + slot):
+//   slot 0 — primary:   Number / Dual-top / Quad-TL / GaugeNum-center / Graph-primary
+//   slot 1 — secondary: Dual-bottom / Quad-TR / Graph-secondary
+//   slot 2 — tertiary:  Quad-BL
+//   slot 3 — quaternary:Quad-BR
+String g_custom_labels[NUM_SCREENS * 4];
+
+// Returns the custom label for a given screen/slot, or "" if none set.
+const char* get_custom_label(int screen_idx, int slot) {
+    int i = screen_idx * 4 + slot;
+    if (i < 0 || i >= NUM_SCREENS * 4) return "";
+    return g_custom_labels[i].c_str();
+}
 // Auto-scroll interval in seconds (0 = off)
 uint16_t auto_scroll_sec = 0;
 // Screen-off timeout in minutes (0 = always on)
@@ -295,7 +310,7 @@ static const N2kField n2k_all_fields[] = {
     N2K_SPEED_WATER, N2K_SPEED_GROUND,
     N2K_LOG_TOTAL, N2K_LOG_TRIP, N2K_LEEWAY,
     // Depth
-    N2K_WATER_DEPTH, N2K_DEPTH_OFFSET,
+    N2K_WATER_DEPTH, N2K_DEPTH_BELOW_KEEL, N2K_DEPTH_OFFSET,
     // Wind
     N2K_WIND_SPEED_APPARENT, N2K_WIND_ANGLE_APPARENT,
     N2K_WIND_SPEED_TRUE, N2K_WIND_ANGLE_TRUE,
@@ -322,28 +337,61 @@ static const N2kField n2k_all_fields[] = {
 };
 static const int n2k_all_fields_count = sizeof(n2k_all_fields) / sizeof(n2k_all_fields[0]);
 
-// Build an HTML <select> for an N2K field.  `formName` is the HTML name=
-// attribute, `currentVal` is the stored value (may be numeric enum or
-// legacy SK path string).
-static String n2k_select(const String& formName, const char* currentVal) {
+// Build an HTML <select> for an N2K field, appending directly to `out`
+// (which should be the PSRAM-backed html buffer).  This avoids allocating
+// a large local String in iRAM — the old return-by-value version peaked at
+// ~4096 bytes of iRAM per call and caused OOM hangs on the 2nd config page
+// visit when iRAM was already low from TCP send-buffer pbufs.
+// Generates a hidden input (submitted), a dropdown of known N2K fields, and a
+// text input revealed when "Custom path..." is chosen.  The save handler reads
+// only the hidden input (formName) so it needs no changes.  If the stored value
+// is not a recognised N2K enum (e.g. a raw SK path string), it pre-selects
+// "Custom path..." and pre-fills the text input.
+static void n2k_select(String& out, const String& formName, const char* currentVal) {
+    bool hasValue = currentVal && currentVal[0] != '\0';
     N2kField cur = n2k_field_from_stored(String(currentVal));
-    String h = "<select name='" + formName + "' style='width:80%'>"
-               "<option value='0'";
-    if (cur == N2K_NONE) h += " selected";
-    h += ">-- None --</option>";
-    for (int i = 0; i < n2k_all_fields_count; ++i) {
-        N2kField f = n2k_all_fields[i];
-        h += "<option value='" + String((int)f) + "'";
-        if (f == cur) h += " selected";
-        h += ">" + String(n2k_field_label(f)) + "</option>";
-    }
-    h += "</select>";
-    return h;
+    bool isCustom = hasValue && (cur == N2K_NONE);  // not a recognised N2K enum
+
+    // IDs for the three elements (formName is safe for HTML ids: only [A-Za-z0-9_])
+    String hidId = formName + "_v";
+    String selId = formName + "_s";
+    String txtId = formName + "_t";
+
+    // Stored value for hidden input and data-val attribute:
+    //   - known N2K field → numeric enum string (e.g. "50")
+    //   - custom path     → the raw path string
+    //   - nothing         → "0"
+    const char* storedVal = hasValue ? currentVal : "0";
+
+    // Hidden input — the only element with name=formName, always submitted
+    out += "<input type='hidden' name='"; out += formName;
+    out += "' id='"; out += hidId;
+    out += "' value='"; out += storedVal; out += "'>";
+
+    // Dropdown — no name, no options (populated by populateN2kSelects() in JS shell).
+    // data-val carries the currently stored value so JS can set the right selection.
+    out += "<select id='"; out += selId;
+    out += "' class='n2k-sel' data-val='"; out += storedVal; out += "'";
+    out += " style='width:70%' onchange=\"(function(v){"
+           "var t=document.getElementById('"; out += txtId; out += "');"
+           "var h=document.getElementById('"; out += hidId; out += "');"
+           "if(v==='__custom__'){t.style.display='inline-block';t.focus();}"
+           "else{t.style.display='none';h.value=v;}"
+           "})(this.value)\">";
+    out += "</select>";
+
+    // Text input — shown only in custom mode, updates the hidden input on every keystroke
+    out += "<input type='text' id='"; out += txtId;
+    out += "' placeholder='e.g. environment.wind.speedApparent'";
+    out += " style='width:60%;margin-top:4px;display:";
+    out += (isCustom ? "inline-block" : "none"); out += ";'";
+    if (isCustom) { out += " value='"; out += currentVal; out += "'"; }
+    out += " oninput=\"document.getElementById('"; out += hidId; out += "').value=this.value;\">";
 }
 
 // Overload for String-based current values (gauge signalk_paths[])
-static String n2k_select(const String& formName, const String& currentVal) {
-    return n2k_select(formName, currentVal.c_str());
+static void n2k_select(String& out, const String& formName, const String& currentVal) {
+    n2k_select(out, formName, currentVal.c_str());
 }
 
 static void scan_sd_assets() {
@@ -561,8 +609,11 @@ void save_preferences(bool skip_screen_blobs = false) {
         }
     }
 
-    // Always write to SD regardless of NVS state — SD is the primary store.
-    {
+    // Write to SD only when the caller has NOT already written screens to SD.
+    // When skip_screen_blobs=true, handle_save_gauges() already wrote screens.bin
+    // and signalk_paths.txt atomically; a second write here doubles SD I/O and
+    // blocks the loop for an extra ~200ms — the primary cause of post-save sluggishness.
+    if (!skip_screen_blobs) {
         Serial.println(any_nvs_ok ? "[SD SAVE] NVS OK; also writing to SD for redundancy"
                                    : "[SD SAVE] NVS blob writes failed; saving to SD as fallback");
         if (!SD_MMC.exists("/config")) SD_MMC.mkdir("/config");
@@ -652,6 +703,24 @@ void load_preferences() {
                     idx++;
                 }
                 spf.close();
+            }
+        }
+    }
+    // Load custom display labels from SD (non-critical, silently skip if absent)
+    {
+        const char *lblpath = "/config/screen_labels.txt";
+        if (SD_MMC.exists(lblpath)) {
+            File lf = SD_MMC.open(lblpath, FILE_READ);
+            if (lf) {
+                int idx = 0;
+                while (lf.available() && idx < NUM_SCREENS * 4) {
+                    String line = lf.readStringUntil('\n');
+                    line.trim();
+                    g_custom_labels[idx] = line;
+                    idx++;
+                }
+                lf.close();
+                Serial.println("[SD LOAD] Loaded /config/screen_labels.txt");
             }
         }
     }
@@ -879,7 +948,11 @@ void handle_gauges_page() {
             esp_task_wdt_reset();
             config_server.sendContent(html);
             html.clear();
-            // No lv_timer_handler() — shell page is ~4 KB, LVGL can wait.
+            // Yield 20 ms so the lwIP task (priority 18) can process incoming
+            // TCP ACKs and free send-buffer pbufs before we queue more data.
+            // Without this, rapid sendContent() calls accumulate unACKed pbufs
+            // in iRAM and exhaust it mid-fragment.
+            vTaskDelay(pdMS_TO_TICKS(20));
         }
     };
 
@@ -928,66 +1001,120 @@ void handle_gauges_page() {
     html += "var NUM_SCREENS=" + String(NUM_SCREENS) + ";\n";
     html += "var currentTab=-1;\n";
 
-    // showScreenTab: fetch a single screen's config HTML from the device
+    // ── N2K dropdown options — built once here, applied by populateN2kSelects() ──
+    // Fragments now emit empty <select class="n2k-sel" data-val="..."> elements.
+    // populateN2kSelects() fills them after each fragment is injected into the DOM,
+    // eliminating 3-12 KB of repeated <option> markup from every fragment response.
+    html += "var N2K_OPTS_HTML='<option value=\"0\">-- None --</option>";
+    for (int i = 0; i < n2k_all_fields_count; ++i) {
+        N2kField f = n2k_all_fields[i];
+        html += "<option value=\""; html += (int)f; html += "\">";
+        html += n2k_field_label(f); html += "</option>";
+    }
+    html += "<option value=\"__custom__\">Custom path...</option>';\n";
+
+    // Populate all .n2k-sel selects within a given DOM root element.
+    // Reads the data-val attribute to set the correct initial selection,
+    // and handles the custom-path case (no matching enum value found).
+    html += "function populateN2kSelects(root){\n";
+    html += "  var sels=(root||document).querySelectorAll('.n2k-sel');\n";
+    html += "  for(var i=0;i<sels.length;i++){\n";
+    html += "    var sel=sels[i];\n";
+    html += "    sel.innerHTML=N2K_OPTS_HTML;\n";
+    html += "    var val=sel.getAttribute('data-val')||'0';\n";
+    html += "    var found=false;\n";
+    html += "    for(var j=0;j<sel.options.length;j++){if(sel.options[j].value===val){sel.selectedIndex=j;found=true;break;}}\n";
+    html += "    var hid=document.getElementById(sel.id.replace(/_s$/,'_v'));\n";
+    html += "    var txt=document.getElementById(sel.id.replace(/_s$/,'_t'));\n";
+    html += "    if(!found&&val!=='0'&&val!==''){\n";
+    html += "      sel.value='__custom__';\n";
+    html += "      if(txt){txt.style.display='inline-block';txt.value=val;}\n";
+    html += "      if(hid)hid.value=val;\n";
+    html += "    }\n";
+    html += "  }\n";
+    html += "}\n";
+
+    // ── preload generation counter — incremented on every deliberate tab click ──
+    // Causes any in-flight background preload loop to abort, so the user's
+    // explicit tab request is not queued behind 4 preload fetches.
+    html += "var preloadGen=0;\n";
+
+    // showScreenTab: switch display + load fragment for the chosen tab
     html += "function showScreenTab(idx){\n";
     html += "  if(idx===currentTab) return;\n";
+    html += "  ++preloadGen;\n";  // cancel any running background preload
     html += "  currentTab=idx;\n";
     html += "  document.getElementById('save_screen').value=idx;\n";
     html += "  for(var s=0;s<NUM_SCREENS;s++){\n";
     html += "    var b=document.getElementById('tabbtn_'+s);\n";
     html += "    if(b) b.style.background=(s===idx?'#e3eaf6':'#f4f6fa');\n";
     html += "  }\n";
+    // Always switch the physical display, even when fragment is cached
+    html += "  fetch('/gauges/switch?s='+idx).catch(function(){});\n";
+    html += "  loadScreenFragment(idx,-1);\n";
+    html += "}\n";
+
+    // Fragment cache: key = "idx" for stored type, "idx_type" for type override.
+    // Re-visiting the same tab is instant; first visit fetches from device.
+    html += "var fragmentCache={};\n";
+    html += "function loadScreenFragment(idx,typeOverride){\n";
     html += "  var cont=document.getElementById('screen-content');\n";
+    html += "  var ckey=(typeOverride>=0)?(idx+'_'+typeOverride):String(idx);\n";
+    html += "  if(fragmentCache[ckey]){\n";
+    html += "    cont.innerHTML=fragmentCache[ckey];\n";
+    html += "    populateN2kSelects(cont);\n";  // re-populate dropdowns from cache hit
+    html += "    return;\n";
+    html += "  }\n";
     html += "  cont.innerHTML='<p style=\"text-align:center;color:#888;padding:40px 0;\">Loading...</p>';\n";
-    html += "  fetch('/gauges/screen?s='+idx)\n";
+    html += "  var url='/gauges/screen?s='+idx;\n";
+    html += "  if(typeOverride>=0)url+='&type='+typeOverride;\n";
+    html += "  fetch(url)\n";
     html += "    .then(function(r){return r.text();})\n";
     html += "    .then(function(h){\n";
+    html += "      fragmentCache[ckey]=h;\n";
     html += "      cont.innerHTML=h;\n";
-    html += "      initScreenTab(idx);\n";
+    html += "      populateN2kSelects(cont);\n";  // populate dropdowns on fresh load
+    html += "      preloadFragments(idx);\n";
     html += "    })\n";
-    html += "    .catch(function(e){\n";
-    html += "      cont.innerHTML='<p style=\"color:red;text-align:center;\">Failed to load – '+e+'</p>';\n";
-    html += "    });\n";
+    html += "    .catch(function(e){cont.innerHTML='<p style=\"color:red;text-align:center;\">Failed &ndash; '+e+'</p>';});\n";
     html += "}\n";
-
-    // initScreenTab: called after injecting screen HTML — set up toggles
-    html += "function initScreenTab(s){\n";
-    html += "  toggleGaugeConfig(s);\n";
-    html += "}\n";
-
-    // toggleGaugeConfig — same logic as before but operates on injected DOM
-    html += "function toggleGaugeConfig(screen){\n";
-    html += "  var sel=document.getElementById('displaytype_'+screen);\n";
-    html += "  if(!sel) return;\n";
-    html += "  var divIds=['gaugeconfig','numberconfig','dualconfig','quadconfig','gaugenumconfig','graphconfig','compassconfig','positionconfig','aisconfig','attitudeconfig','anchorconfig'];\n";
-    html += "  var typeMap={'0':['gaugeconfig'],'1':['numberconfig'],'2':['dualconfig'],'3':['quadconfig'],'4':['gaugeconfig','gaugenumconfig'],'5':['graphconfig'],'6':['compassconfig'],'7':['positionconfig'],'8':['aisconfig'],'9':['attitudeconfig'],'10':['anchorconfig']};\n";
-    html += "  var show=typeMap[sel.value]||[];\n";
-    html += "  divIds.forEach(function(d){\n";
-    html += "    var el=document.getElementById(d+'_'+screen);\n";
-    html += "    if(el) el.style.display=(show.indexOf(d)>=0?'block':'none');\n";
-    html += "  });\n";
-    // Hide Custom Color for gauge types
-    html += "  var bgSel=document.getElementById('bg_image_'+screen);\n";
-    html += "  if(bgSel&&sel){\n";
-    html += "    var ccOpt=bgSel.querySelector(\"option[value='Custom Color']\");\n";
-    html += "    var isGauge=(sel.value==='0'||sel.value==='4');\n";
-    html += "    if(ccOpt){ccOpt.hidden=isGauge;ccOpt.disabled=isGauge;if(isGauge&&bgSel.value==='Custom Color')bgSel.value=bgSel.options[0].value;}\n";
-    // Hide entire Background dropdown for AIS/Attitude/Anchor (has its own colour picker / no bg)
-    html += "    var isAIS=(sel.value==='8');\n";
-    html += "    var isATT=(sel.value==='9');\n";
-    html += "    var isANC=(sel.value==='10');\n";
-    html += "    bgSel.parentElement.parentElement.style.display=(isAIS||isATT||isANC)?'none':'block';\n";
+    // Preload remaining screen fragments sequentially in the background.
+    // Uses a generation counter — if the user clicks a tab (incrementing preloadGen)
+    // the active preload loop detects the stale generation and stops immediately.
+    html += "function preloadFragments(skipIdx){\n";
+    html += "  var gen=preloadGen;\n";
+    html += "  var order=[];\n";
+    html += "  for(var s=0;s<NUM_SCREENS;s++){if(s!==skipIdx&&!fragmentCache[String(s)])order.push(s);}\n";
+    html += "  var i=0;\n";
+    html += "  function next(){\n";
+    html += "    if(gen!==preloadGen||i>=order.length)return;\n";  // abort if user clicked a tab
+    html += "    var si=order[i++];\n";
+    html += "    fetch('/gauges/screen?s='+si)\n";
+    html += "      .then(function(r){return r.text();})\n";
+    html += "      .then(function(h){if(!fragmentCache[String(si)])fragmentCache[String(si)]=h;setTimeout(next,600);})\n";
+    html += "      .catch(function(){setTimeout(next,800);});\n";
     html += "  }\n";
-    html += "  toggleBgImageColor(screen);\n";
+    html += "  setTimeout(next,600);\n";  // wait 600ms after first fragment before preloading
     html += "}\n";
 
+    // toggleBgImageColor: show/hide the inline Custom Color picker in the fragment
     html += "function toggleBgImageColor(screen){\n";
     html += "  var sel=document.getElementById('bg_image_'+screen);\n";
     html += "  ['number_bg_color_div_','dual_bg_color_div_','graph_bg_color_div_','pos_bg_color_div_'].forEach(function(p){\n";
     html += "    var d=document.getElementById(p+screen);\n";
-    html += "    if(sel&&d) d.style.display=(sel.value==='Custom Color'?'block':'none');\n";
+    html += "    if(sel&&d)d.style.display=(sel.value==='Custom Color'?'block':'none');\n";
     html += "  });\n";
     html += "}\n";
+
+    // initScreenTab: no-op — fragment is now type-specific, no client-side toggle needed
+    html += "function initScreenTab(s){};\n";
+
+    // toggleGaugeConfig — refetch fragment with new display type
+    html += "function toggleGaugeConfig(screen){"
+            "var sel=document.getElementById('displaytype_'+screen);"
+            "if(!sel)return;"
+            "loadScreenFragment(screen,parseInt(sel.value,10));"
+            "}\n";
 
     // AJAX save — POST only the visible screen's fields
     html += "function ajaxSave(){\n";
@@ -1002,6 +1129,9 @@ void handle_gauges_page() {
     html += "  .then(function(j){\n";
     html += "    if(btn){btn.disabled=false;btn.value='Saved!';\n";
     html += "    setTimeout(function(){btn.value='Apply (no reboot)';},2000);}\n";
+    // Invalidate cache for the saved screen so next tab visit reflects saved values
+    html += "    var ct=currentTab;\n";
+    html += "    for(var k in fragmentCache){if(k===String(ct)||k.indexOf(ct+'_')===0)delete fragmentCache[k];}\n";
     html += "  })\n";
     html += "  .catch(function(e){\n";
     html += "    console.error('ajaxSave error',e);\n";
@@ -1060,6 +1190,13 @@ void handle_gauges_page() {
 
     esp_task_wdt_reset();
     config_server.sendContent(""); // chunked transfer terminator
+    // Let lwIP transmit the queued data before sending RST, then close
+    // immediately to free PCB + pbufs.  Without this the shell page's
+    // ~4 KB of send-buffer pbufs stay allocated until the browser ACKs
+    // them (several main-loop iterations later), fragmenting iRAM just
+    // before the AJAX fragment handler runs.
+    vTaskDelay(pdMS_TO_TICKS(30));
+    rst_close_client();
     Serial.printf("[GAUGES] shell complete, iRAM=%u\n",
         heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
 }
@@ -1086,21 +1223,21 @@ void handle_gauges_screen() {
     const std::vector<String>& iconFiles = g_iconFiles;
     const std::vector<String>& bgFiles   = g_bgFiles;
 
-    Serial.printf("[GAUGES] fragment s=%d, iRAM=%u\n", s,
+    // displayType: use ?type=N override (user changing dropdown) or the stored value
+    int displayType = screen_configs[s].display_type;
+    if (config_server.hasArg("type")) {
+        int t = config_server.arg("type").toInt();
+        if (t >= 0 && t <= 10) displayType = t;
+    }
+
+    Serial.printf("[GAUGES] fragment s=%d type=%d iRAM=%u\n", s, displayType,
         heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
 
-    esp_task_wdt_reset();
-    Serial.println("[GAUGES] sending response header");
-    Serial.flush();
-    config_server.sendHeader("Connection", "close");
-    config_server.setContentLength(CONTENT_LENGTH_UNKNOWN);
-    config_server.send(200, "text/html; charset=utf-8", "");
-    Serial.printf("[GAUGES] header sent, iRAM=%u\n",
-        heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
-    Serial.flush();
-
-    // Re-use the SAME static String as handle_gauges_page() to avoid
-    // holding two 4096-byte buffers permanently in iRAM.
+    // Build the ENTIRE fragment in the PSRAM-backed String, then send once
+    // with Content-Length.  Sending many small chunks via sendContent() queues
+    // separate lwIP pbufs (each ~1460 B in iRAM) faster than the browser ACKs
+    // them, exhausting iRAM mid-fragment.  One large send lets the TCP stack
+    // manage flow control internally within a bounded send window.
     extern String g_http_html_buf;
     extern bool   g_http_html_buf_reserved;
     String& html = g_http_html_buf;
@@ -1109,15 +1246,9 @@ void handle_gauges_screen() {
         g_http_html_buf_reserved = true;
     }
     html.clear();
-    auto flushHtml = [&]() {
-        if (html.length() > 0) {
-            esp_task_wdt_reset();
-            config_server.sendContent(html);
-            html.clear();
-        }
-    };
-
-    // ── stream_screen_config inlined ─────────────────────────────────
+    // flushHtml is a no-op here — we accumulate everything in PSRAM.
+    // The esp_task_wdt_reset() keeps the watchdog happy during long builds.
+    auto flushHtml = [&]() { esp_task_wdt_reset(); };
     html += "<h3>Screen " + String(s+1) + "</h3>";
 
     // Display Type dropdown
@@ -1125,12 +1256,13 @@ void handle_gauges_screen() {
     const char* dtNames[] = {"Gauge","Number","Dual","Quad","Gauge + Number","Graph","Compass","Position","AIS","Attitude","Anchor Alarm"};
     for (int dt = 0; dt < 11; ++dt) {
         html += "<option value='" + String(dt) + "'";
-        if (screen_configs[s].display_type == dt) html += " selected";
+        if (displayType == dt) html += " selected";
         html += ">" + String(dtNames[dt]) + "</option>";
     }
     html += "</select></label></div>";
 
-    // Background selection
+    // Background selection — not applicable for AIS/Attitude/Anchor
+    if (displayType < 8) {
     String savedBg = String(screen_configs[s].background_path);
     String savedBgNorm = savedBg; savedBgNorm.toLowerCase();
     savedBgNorm.replace("S://", "S:/");
@@ -1149,17 +1281,27 @@ void handle_gauges_screen() {
     }
     html += "<option value='Custom Color'";
     if (savedBg == "Custom Color") html += " selected='selected'";
-    if (screen_configs[s].display_type == DISPLAY_TYPE_GAUGE ||
-        screen_configs[s].display_type == DISPLAY_TYPE_GAUGE_NUMBER) html += " hidden disabled";
+    if (displayType == DISPLAY_TYPE_GAUGE ||
+        displayType == DISPLAY_TYPE_GAUGE_NUMBER) html += " hidden disabled";
     html += ">Custom Color</option>";
     html += "</select></label></div>";
     flushHtml();
+    } // end if (displayType < 8) — background row
+
+    bool isCustomColor = (String(screen_configs[s].background_path) == "Custom Color");
 
     // ── Number display config ────────────────────────────────────────
-    bool isCustomColor = (String(screen_configs[s].background_path) == "Custom Color");
-    html += "<div id='numberconfig_" + String(s) + "' style='display:" + String(screen_configs[s].display_type == 1 ? "block" : "none") + ";'>";
+    if (displayType == DISPLAY_TYPE_NUMBER) {
     html += "<h4>Number Display Settings</h4>";
-    html += "<div style='margin-bottom:8px;'><label>NMEA 2000 Field: " + n2k_select("number_path_" + String(s), screen_configs[s].number_path) + "</label></div>";
+    flushHtml();
+    html += "<div style='margin-bottom:8px;'><label>NMEA 2000 Field: ";
+    n2k_select(html, "number_path_" + String(s), screen_configs[s].number_path);
+    html += "</label></div>";
+    html += "<div style='margin-bottom:8px;'><label>Display Label (override): "
+            "<input type='text' name='clabel_" + String(s) + "_0' placeholder='e.g. Depth' value='";
+    html += g_custom_labels[s * 4 + 0];
+    html += "' style='width:40%;'></label> "
+            "<small style='color:#888'>Leave blank to use default field name</small></div>";
     html += "<div id='number_bg_color_div_" + String(s) + "' style='margin-bottom:8px;display:" + String(isCustomColor ? "block" : "none") + ";'>";
     html += "<label>Background Color: <input name='number_bg_color_" + String(s) + "' type='color' value='" + String(screen_configs[s].number_bg_color[0] ? screen_configs[s].number_bg_color : "#000000") + "'></label></div>";
     html += "<div style='margin-bottom:8px;'><label>Font Size: <select name='number_font_size_" + String(s) + "'>";
@@ -1179,11 +1321,11 @@ void handle_gauges_screen() {
     html += "<label><input type='checkbox' name='num_high_buz_" + String(s) + "'";
     if (screen_configs[s].buzzer[0][2]) html += " checked";
     html += "> Enable</label></div></div></div>";
-    html += "</div>"; // End number config
+    } // end displayType == DISPLAY_TYPE_NUMBER
     flushHtml();
 
     // ── Compass config ───────────────────────────────────────────────
-    html += "<div id='compassconfig_" + String(s) + "' style='display:" + String(screen_configs[s].display_type == DISPLAY_TYPE_COMPASS ? "block" : "none") + ";'>";
+    if (displayType == DISPLAY_TYPE_COMPASS) {
     html += "<h4>Compass Settings</h4>";
     html += "<div style='margin-bottom:8px;'><label>Background Color: <input name='compass_bg_color_" + String(s) + "' type='color' value='" + String(screen_configs[s].number_bg_color[0] ? screen_configs[s].number_bg_color : "#000000") + "'></label></div>";
     html += "<div style='margin-bottom:8px;'><em>Heading data from NMEA 2000 PGN 127250 (Vessel Heading)</em></div>";
@@ -1194,7 +1336,10 @@ void handle_gauges_screen() {
     html += "<h4>Extra Data Fields</h4><div style='display:flex;gap:16px;flex-wrap:wrap;'>";
     // BL
     html += "<div style='flex:1;min-width:200px;'><h5>Bottom-Left</h5>";
-    html += "<div style='margin-bottom:4px;'><label>NMEA 2000 Field: " + n2k_select("compass_bl_path_" + String(s), screen_configs[s].quad_bl_path) + "</label></div>";
+    flushHtml();
+    html += "<div style='margin-bottom:4px;'><label>NMEA 2000 Field: ";
+    n2k_select(html, "compass_bl_path_" + String(s), screen_configs[s].quad_bl_path);
+    html += "</label></div>";
     html += "<div style='margin-bottom:4px;'><label>Font Size: <select name='compass_bl_font_size_" + String(s) + "'>";
     html += "<option value='0'" + String(screen_configs[s].quad_bl_font_size == 0 ? " selected" : "") + ">Small (48pt)</option>";
     html += "<option value='1'" + String(screen_configs[s].quad_bl_font_size == 1 ? " selected" : "") + ">Medium (72pt)</option>";
@@ -1203,24 +1348,35 @@ void handle_gauges_screen() {
     html += "<div style='margin-bottom:4px;'><label>Font Color: <input name='compass_bl_font_color_" + String(s) + "' type='color' value='" + String(screen_configs[s].quad_bl_font_color[0] ? screen_configs[s].quad_bl_font_color : "#FFFFFF") + "'></label></div></div>";
     // BR
     html += "<div style='flex:1;min-width:200px;'><h5>Bottom-Right</h5>";
-    html += "<div style='margin-bottom:4px;'><label>NMEA 2000 Field: " + n2k_select("compass_br_path_" + String(s), screen_configs[s].quad_br_path) + "</label></div>";
+    flushHtml();
+    html += "<div style='margin-bottom:4px;'><label>NMEA 2000 Field: ";
+    n2k_select(html, "compass_br_path_" + String(s), screen_configs[s].quad_br_path);
+    html += "</label></div>";
     html += "<div style='margin-bottom:4px;'><label>Font Size: <select name='compass_br_font_size_" + String(s) + "'>";
     html += "<option value='0'" + String(screen_configs[s].quad_br_font_size == 0 ? " selected" : "") + ">Small (48pt)</option>";
     html += "<option value='1'" + String(screen_configs[s].quad_br_font_size == 1 ? " selected" : "") + ">Medium (72pt)</option>";
     html += "<option value='2'" + String(screen_configs[s].quad_br_font_size == 2 ? " selected" : "") + ">Large (96pt)</option>";
     html += "</select></label></div>";
     html += "<div style='margin-bottom:4px;'><label>Font Color: <input name='compass_br_font_color_" + String(s) + "' type='color' value='" + String(screen_configs[s].quad_br_font_color[0] ? screen_configs[s].quad_br_font_color : "#FFFFFF") + "'></label></div></div>";
-    html += "</div></div>"; // end compass
+    html += "</div></div>"; // end compass extra fields
+    } // end displayType == DISPLAY_TYPE_COMPASS
     flushHtml();
 
     // ── Dual display config ──────────────────────────────────────────
-    html += "<div id='dualconfig_" + String(s) + "' style='display:" + String(screen_configs[s].display_type == 2 ? "block" : "none") + ";'>";
+    if (displayType == DISPLAY_TYPE_DUAL) {
     html += "<h4>Dual Display Settings</h4>";
     html += "<div id='dual_bg_color_div_" + String(s) + "' style='margin-bottom:8px;display:" + String(isCustomColor ? "block" : "none") + ";'>";
     html += "<label>Background Color: <input name='dual_bg_color_" + String(s) + "' type='color' value='" + String(screen_configs[s].number_bg_color[0] ? screen_configs[s].number_bg_color : "#000000") + "'></label></div>";
     // Top
     html += "<h5>Top Display</h5>";
-    html += "<div style='margin-bottom:8px;'><label>NMEA 2000 Field: " + n2k_select("dual_top_path_" + String(s), screen_configs[s].dual_top_path) + "</label></div>";
+    flushHtml();
+    html += "<div style='margin-bottom:8px;'><label>NMEA 2000 Field: ";
+    n2k_select(html, "dual_top_path_" + String(s), screen_configs[s].dual_top_path);
+    html += "</label></div>";
+    html += "<div style='margin-bottom:8px;'><label>Display Label (override): "
+            "<input type='text' name='clabel_" + String(s) + "_0' placeholder='e.g. Speed' value='";
+    html += g_custom_labels[s * 4 + 0];
+    html += "' style='width:40%;'></label></div>";
     html += "<div style='margin-bottom:8px;'><label>Font Size: <select name='dual_top_font_size_" + String(s) + "'>";
     for (int fs = 0; fs < 5; fs++) {
         const char* fsNames[] = {"Small (48pt)","Medium (72pt)","Large (96pt)","X-Large (120pt)","XX-Large (144pt)"};
@@ -1243,7 +1399,14 @@ void handle_gauges_screen() {
     flushHtml();
     // Bottom
     html += "<h5>Bottom Display</h5>";
-    html += "<div style='margin-bottom:8px;'><label>NMEA 2000 Field: " + n2k_select("dual_bottom_path_" + String(s), screen_configs[s].dual_bottom_path) + "</label></div>";
+    flushHtml();
+    html += "<div style='margin-bottom:8px;'><label>NMEA 2000 Field: ";
+    n2k_select(html, "dual_bottom_path_" + String(s), screen_configs[s].dual_bottom_path);
+    html += "</label></div>";
+    html += "<div style='margin-bottom:8px;'><label>Display Label (override): "
+            "<input type='text' name='clabel_" + String(s) + "_1' placeholder='e.g. Depth' value='";
+    html += g_custom_labels[s * 4 + 1];
+    html += "' style='width:40%;'></label></div>";
     html += "<div style='margin-bottom:8px;'><label>Font Size: <select name='dual_bottom_font_size_" + String(s) + "'>";
     for (int fs = 0; fs < 5; fs++) {
         const char* fsNames[] = {"Small (48pt)","Medium (72pt)","Large (96pt)","X-Large (120pt)","XX-Large (144pt)"};
@@ -1263,17 +1426,24 @@ void handle_gauges_screen() {
     html += "<label><input type='checkbox' name='dual_bot_high_buz_" + String(s) + "'";
     if (screen_configs[s].buzzer[1][2]) html += " checked";
     html += "> Enable</label></div></div>";
-    html += "</div>"; // End dual config
+    } // end displayType == DISPLAY_TYPE_DUAL
     flushHtml();
 
     // ── Quad display config ──────────────────────────────────────────
-    html += "<div id='quadconfig_" + String(s) + "' style='display:" + String(screen_configs[s].display_type == 3 ? "block" : "none") + ";'>";
+    if (displayType == DISPLAY_TYPE_QUAD) {
     html += "<h4>Quad Display Settings</h4>";
     html += "<div style='margin-bottom:8px;'><label>Background Color: <input name='quad_bg_color_" + String(s) + "' type='color' value='" + String(screen_configs[s].number_bg_color[0] ? screen_configs[s].number_bg_color : "#000000") + "'></label></div>";
     // Quad quadrant helper
-    auto addQuadrantHTML = [&](const char* name, const char* label, char* path, uint8_t size, char* color, int g_alm, int zl, int zh) {
+    auto addQuadrantHTML = [&](const char* name, const char* label, char* path, uint8_t size, char* color, int g_alm, int zl, int zh, int lslot) {
         html += "<h5>" + String(label) + "</h5>";
-        html += "<div style='margin-bottom:4px;'><label>NMEA 2000 Field: " + n2k_select("quad_" + String(name) + "_path_" + String(s), path) + "</label></div>";
+        flushHtml();
+        html += "<div style='margin-bottom:4px;'><label>NMEA 2000 Field: ";
+        n2k_select(html, "quad_" + String(name) + "_path_" + String(s), path);
+        html += "</label></div>";
+        html += "<div style='margin-bottom:4px;'><label>Display Label (override): "
+                "<input type='text' name='clabel_" + String(s) + "_" + String(lslot) + "' placeholder='e.g. Speed' value='";
+        html += g_custom_labels[s * 4 + lslot];
+        html += "' style='width:35%;'></label></div>";
         html += "<div style='margin-bottom:4px;'><label>Font Size: <select name='quad_" + String(name) + "_font_size_" + String(s) + "'>";
         for (int fs = 0; fs < 3; fs++) {
             const char* n[] = {"Small (48pt)","Medium (72pt)","Large (96pt)"};
@@ -1293,19 +1463,19 @@ void handle_gauges_screen() {
         if (screen_configs[s].buzzer[g_alm][zh]) html += " checked";
         html += "> Enable</label></div></div>";
     };
-    addQuadrantHTML("tl", "Top-Left",     screen_configs[s].quad_tl_path, screen_configs[s].quad_tl_font_size, screen_configs[s].quad_tl_font_color, 0, 1, 2);
+    addQuadrantHTML("tl", "Top-Left",     screen_configs[s].quad_tl_path, screen_configs[s].quad_tl_font_size, screen_configs[s].quad_tl_font_color, 0, 1, 2, 0);
     flushHtml();
-    addQuadrantHTML("tr", "Top-Right",    screen_configs[s].quad_tr_path, screen_configs[s].quad_tr_font_size, screen_configs[s].quad_tr_font_color, 0, 3, 4);
+    addQuadrantHTML("tr", "Top-Right",    screen_configs[s].quad_tr_path, screen_configs[s].quad_tr_font_size, screen_configs[s].quad_tr_font_color, 0, 3, 4, 1);
     flushHtml();
-    addQuadrantHTML("bl", "Bottom-Left",  screen_configs[s].quad_bl_path, screen_configs[s].quad_bl_font_size, screen_configs[s].quad_bl_font_color, 1, 1, 2);
+    addQuadrantHTML("bl", "Bottom-Left",  screen_configs[s].quad_bl_path, screen_configs[s].quad_bl_font_size, screen_configs[s].quad_bl_font_color, 1, 1, 2, 2);
     flushHtml();
-    addQuadrantHTML("br", "Bottom-Right", screen_configs[s].quad_br_path, screen_configs[s].quad_br_font_size, screen_configs[s].quad_br_font_color, 1, 3, 4);
+    addQuadrantHTML("br", "Bottom-Right", screen_configs[s].quad_br_path, screen_configs[s].quad_br_font_size, screen_configs[s].quad_br_font_color, 1, 3, 4, 3);
     flushHtml();
-    html += "</div>"; // End quad config
+    } // end displayType == DISPLAY_TYPE_QUAD
     flushHtml();
 
     // ── Gauge config ─────────────────────────────────────────────────
-    html += "<div id='gaugeconfig_" + String(s) + "' style='display:" + String((screen_configs[s].display_type == 0 || screen_configs[s].display_type == 4) ? "block" : "none") + ";'>";
+    if (displayType == DISPLAY_TYPE_GAUGE || displayType == DISPLAY_TYPE_GAUGE_NUMBER) {
     for (int g = 0; g < 2; ++g) {
         if (g == 0) {
             html += "<div style='margin-bottom:8px;'><label>Show Bottom Gauge: <input type='checkbox' name='showbottom_" + String(s) + "'";
@@ -1318,7 +1488,10 @@ void handle_gauges_screen() {
             continue;
         }
         html += "<b>" + String(g == 0 ? "Top Gauge" : "Bottom Gauge") + "</b>";
-        html += "<div style='margin-bottom:8px;'><label>NMEA 2000 Field: " + n2k_select("skpath_" + String(s) + "_" + String(g), signalk_paths[idx]) + "</label></div>";
+        flushHtml();
+        html += "<div style='margin-bottom:8px;'><label>NMEA 2000 Field: ";
+        n2k_select(html, "skpath_" + String(s) + "_" + String(g), signalk_paths[idx]);
+        html += "</label></div>";
         // Calibration points
         html += "<table class='table'><tr><th>Point</th><th>Angle</th><th>Value</th><th>Test</th></tr>";
         for (int p = 0; p < 5; ++p) {
@@ -1384,13 +1557,20 @@ void handle_gauges_screen() {
         html += "</div></div>"; // close zone-row + icon-section
         flushHtml();
     }
-    html += "</div>"; // close gaugeconfig div
+    } // end displayType == GAUGE or GAUGE_NUMBER
     flushHtml();
 
     // ── Gauge + Number config ────────────────────────────────────────
-    html += "<div id='gaugenumconfig_" + String(s) + "' style='display:" + String(screen_configs[s].display_type == 4 ? "block" : "none") + ";'>";
+    if (displayType == DISPLAY_TYPE_GAUGE_NUMBER) {
     html += "<h4>Center Number Display</h4>";
-    html += "<div style='margin-bottom:8px;'><label>NMEA 2000 Field: " + n2k_select("gauge_num_center_path_" + String(s), screen_configs[s].gauge_num_center_path) + "</label></div>";
+    flushHtml();
+    html += "<div style='margin-bottom:8px;'><label>NMEA 2000 Field: ";
+    n2k_select(html, "gauge_num_center_path_" + String(s), screen_configs[s].gauge_num_center_path);
+    html += "</label></div>";
+    html += "<div style='margin-bottom:8px;'><label>Display Label (override): "
+            "<input type='text' name='clabel_" + String(s) + "_0' placeholder='e.g. RPM' value='";
+    html += g_custom_labels[s * 4 + 0];
+    html += "' style='width:40%;'></label></div>";
     html += "<div style='margin-bottom:8px;'><label>Font Size: <select name='gauge_num_center_font_size_" + String(s) + "'>";
     for (int fs = 0; fs < 5; fs++) {
         const char* fsNames[] = {"Small (48pt)","Medium (72pt)","Large (96pt)","X-Large (120pt)","XX-Large (144pt)"};
@@ -1410,13 +1590,16 @@ void handle_gauges_screen() {
     html += "<label><input type='checkbox' name='gnum_high_buz_" + String(s) + "'";
     if (screen_configs[s].buzzer[1][2]) html += " checked";
     html += "> Enable</label></div></div></div>";
-    html += "</div>"; // close gaugenumconfig
+    } // end displayType == DISPLAY_TYPE_GAUGE_NUMBER
     flushHtml();
 
     // ── Graph config ─────────────────────────────────────────────────
-    html += "<div id='graphconfig_" + String(s) + "' style='display:" + String(screen_configs[s].display_type == 5 ? "block" : "none") + ";'>";
+    if (displayType == DISPLAY_TYPE_GRAPH) {
     html += "<h4>Graph Display Settings</h4>";
-    html += "<div style='margin-bottom:8px;'><label>NMEA 2000 Field: " + n2k_select("graph_path_1_" + String(s), screen_configs[s].number_path) + "</label></div>";
+    flushHtml();
+    html += "<div style='margin-bottom:8px;'><label>NMEA 2000 Field: ";
+    n2k_select(html, "graph_path_1_" + String(s), screen_configs[s].number_path);
+    html += "</label></div>";
     html += "<div style='margin-bottom:8px;'><label>Chart Type: <select name='graph_chart_type_" + String(s) + "'>";
     const char* ctNames[] = {"Line Chart","Bar Chart","Scatter Plot"};
     for (int ct = 0; ct < 3; ct++) {
@@ -1435,16 +1618,19 @@ void handle_gauges_screen() {
     html += "</select></label></div>";
     html += "<div style='margin-bottom:8px;'><label>Series 1 Color: <input name='graph_color_1_" + String(s) + "' type='color' value='" + String(screen_configs[s].number_font_color[0] ? screen_configs[s].number_font_color : "#00FF00") + "'></label></div>";
     html += "<h5 style='margin-top:16px;'>Second Data Series (Optional)</h5>";
-    html += "<div style='margin-bottom:8px;'><label>NMEA 2000 Field 2: " + n2k_select("graph_path_2_" + String(s), screen_configs[s].graph_path_2) + "</label></div>";
+    flushHtml();
+    html += "<div style='margin-bottom:8px;'><label>NMEA 2000 Field 2: ";
+    n2k_select(html, "graph_path_2_" + String(s), screen_configs[s].graph_path_2);
+    html += "</label></div>";
     html += "<div style='margin-bottom:8px;'><label>Series 2 Color: <input name='graph_color_2_" + String(s) + "' type='color' value='" + String(screen_configs[s].graph_color_2[0] ? screen_configs[s].graph_color_2 : "#FF0000") + "'></label></div>";
     bool isCustomColorGraph = (String(screen_configs[s].background_path) == "Custom Color");
     html += "<div id='graph_bg_color_div_" + String(s) + "' style='margin-bottom:8px;display:" + String(isCustomColorGraph ? "block" : "none") + ";'>";
     html += "<label>Background Color: <input name='graph_bg_color_" + String(s) + "' type='color' value='" + String(screen_configs[s].number_bg_color[0] ? screen_configs[s].number_bg_color : "#000000") + "'></label></div>";
-    html += "</div>"; // close graphconfig
+    } // end displayType == DISPLAY_TYPE_GRAPH
     flushHtml();
 
     // ── Position Display config ──────────────────────────────────────
-    html += "<div id='positionconfig_" + String(s) + "' style='display:" + String(screen_configs[s].display_type == 7 ? "block" : "none") + ";'>";
+    if (displayType == DISPLAY_TYPE_POSITION) {
     html += "<h4>Position Display Settings</h4>";
     html += "<div style='margin-bottom:8px;'><label>Coordinate Format: <select name='pos_coord_format_" + String(s) + "'>";
     const char* cfNames[] = {"Decimal Degrees (DD)","Degrees Minutes Seconds (DMS)","Degrees Decimal Minutes (DDM)"};
@@ -1460,11 +1646,11 @@ void handle_gauges_screen() {
     bool isCustomColorPos = (String(screen_configs[s].background_path) == "Custom Color");
     html += "<div id='pos_bg_color_div_" + String(s) + "' style='margin-bottom:8px;display:" + String(isCustomColorPos ? "block" : "none") + ";'>";
     html += "<label>Background Colour: <input name='pos_bg_color_" + String(s) + "' type='color' value='" + String(screen_configs[s].number_bg_color[0] ? screen_configs[s].number_bg_color : "#000000") + "'></label></div>";
-    html += "</div>"; // close positionconfig
+    } // end displayType == DISPLAY_TYPE_POSITION
     flushHtml();
 
     // ── AIS Display config ───────────────────────────────────────────
-    html += "<div id='aisconfig_" + String(s) + "' style='display:" + String(screen_configs[s].display_type == 8 ? "block" : "none") + ";'>";
+    if (displayType == DISPLAY_TYPE_AIS) {
     html += "<h4>AIS Radar Settings</h4>";
     html += "<div style='margin-bottom:8px;'><label>Range: <select name='ais_range_" + String(s) + "'>";
     const char* aisRangeNames[] = {"0.1 NM","0.5 NM","1 NM","2 NM","5 NM","10 NM","20 NM"};
@@ -1476,11 +1662,11 @@ void handle_gauges_screen() {
     html += "</select></label></div>";
     html += "<div style='margin-bottom:8px;'>";
     html += "<label>Background Colour: <input name='ais_bg_color_" + String(s) + "' type='color' value='" + String(screen_configs[s].number_bg_color[0] ? screen_configs[s].number_bg_color : "#001020") + "'></label></div>";
-    html += "</div>"; // close aisconfig
+    } // end displayType == DISPLAY_TYPE_AIS
     flushHtml();
 
     // ── Attitude Display config ───────────────────────────────────────
-    html += "<div id='attitudeconfig_" + String(s) + "' style='display:" + String(screen_configs[s].display_type == 9 ? "block" : "none") + ";'>";
+    if (displayType == DISPLAY_TYPE_ATTITUDE) {
     html += "<h4>Attitude Indicator Settings</h4>";
     html += "<p style='color:#aaa;'>Uses NMEA 2000 PGN 127257 attitude data (heel/pitch sensor, autopilot, or MFD).</p>";
     html += "<p style='color:#aaa;'><b>Set Level</b> &mdash; snaps the current reading as the zero reference. <b>Clear Level</b> &mdash; removes the offset and uses raw N2K data.</p>";
@@ -1488,25 +1674,37 @@ void handle_gauges_screen() {
     html += "<button type='button' style='padding:8px 20px;font-size:16px;' onclick=\"fetch('/api/imu_calibrate',{method:'POST'}).then(r=>r.text()).then(t=>alert(t))\">Set Level</button>";
     html += "<button type='button' style='padding:8px 20px;font-size:16px;' onclick=\"fetch('/api/imu_clear',{method:'POST'}).then(r=>r.text()).then(t=>alert(t))\">Clear Level</button>";
     html += "</div>";
-    html += "</div>"; // close attitudeconfig
+    } // end displayType == DISPLAY_TYPE_ATTITUDE
 
     // ── Anchor Alarm config ───────────────────────────────────────────────
-    html += "<div id='anchorconfig_" + String(s) + "' style='display:" + String(screen_configs[s].display_type == 10 ? "block" : "none") + ";'>";
+    if (displayType == DISPLAY_TYPE_ANCHOR) {
     html += "<h4>Anchor Alarm Settings</h4>";
     html += "<p style='color:#aaa;'>Tap the map to place the anchor, or use <b>Drop Here</b> to drop at the current boat position. Use [&minus;]/[+] to adjust the alarm radius. Arm/disarm the alarm with the ALARM button.</p>";
     html += "<p style='color:#aaa;'>GPS position is required (NMEA 2000 PGN 129025/129029). Track history is stored in RAM and lost on reboot.</p>";
-    html += "</div>"; // close anchorconfig
+    } // end displayType == DISPLAY_TYPE_ANCHOR
     flushHtml();
 
-    config_server.sendContent(""); // chunked terminator
+    // Send the entire fragment in one response with Content-Length.
+    // lwIP handles flow control within its send window; iRAM usage is
+    // bounded by TCP_SND_BUF (~5744 B) rather than accumulating across
+    // every sendContent() call.
+    // Connection: close prevents HTTP keep-alive pipelining, which can
+    // confuse the synchronous single-client WebServer and cause truncated
+    // responses (browser error: "Content-Length exceeds response body").
+    esp_task_wdt_reset();
+    config_server.sendHeader("Connection", "close");
+    config_server.send(200, "text/html; charset=utf-8", html);
+    html.clear();  // release PSRAM back to pool immediately
+    // Do NOT rst_close_client() here — with Content-Length the browser
+    // knows when the response ends and closes gracefully.  RST would
+    // discard data still queued in the TCP send buffer for large responses.
     Serial.printf("[GAUGES] fragment s=%d complete, iRAM=%u\n", s,
         heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
 
-    // Switch the physical display AFTER the HTTP response is fully sent.
-    // Doing it before/during the response caused LVGL DMA flushes to race
-    // with TCP send-buffer allocations, leading to crashes on the 2nd or
-    // 3rd save→reload cycle.
-    ui_set_screen(s + 1);         // 1-based
+    // Display switching is handled exclusively by /gauges/switch (called by
+    // showScreenTab on every tab click).  Do NOT call ui_set_screen() here —
+    // the background preloader also hits this endpoint for all screens, which
+    // would cycle the display through every screen and leave it on the last one.
 
     // Keep WS paused — the 60-second g_config_page_last_seen watchdog
     // (or navigating away) will resume it.  Do NOT resume here;
@@ -2016,7 +2214,7 @@ void handle_save_gauges() {
         sd_all_ok = (sd_ok_count == NUM_SCREENS);
         if (sd_all_ok) Serial.printf("[SD SAVE] All %d screens OK, skipping NVS blob writes\n", NUM_SCREENS);
 
-        // Write SignalK gauge paths to SD so they persist without NVS writes.
+        // Save SignalK gauge paths to SD so they persist without NVS writes.
         // save_preferences() writes 21 NVS keys (ssid, pw, skpaths×10, etc.) causing
         // NVS page-cache iRAM growth (~400 bytes per save). Instead write skpaths to
         // an SD text file (one path per line) and skip save_preferences() entirely
@@ -2039,6 +2237,25 @@ void handle_save_gauges() {
             } else {
                 Serial.println("[SD SAVE] Failed to write /config/signalk_paths.txt — falling back to NVS");
                 sd_all_ok = false;  // trigger NVS save below
+            }
+        }
+        // Parse and save custom display labels (one text field per slot per screen)
+        for (int s = s_start; s < s_end; ++s) {
+            for (int slot = 0; slot < 4; ++slot) {
+                String key = "clabel_" + String(s) + "_" + String(slot);
+                if (config_server.hasArg(key)) {
+                    g_custom_labels[s * 4 + slot] = config_server.arg(key);
+                }
+            }
+        }
+        if (sd_all_ok) {
+            File lf = SD_MMC.open("/config/screen_labels.tmp", FILE_WRITE);
+            if (lf) {
+                for (int i = 0; i < NUM_SCREENS * 4; ++i) lf.println(g_custom_labels[i]);
+                lf.flush(); lf.close();
+                SD_MMC.remove("/config/screen_labels.txt");
+                SD_MMC.rename("/config/screen_labels.tmp", "/config/screen_labels.txt");
+                Serial.println("[SD SAVE] Wrote /config/screen_labels.txt");
             }
         }
         } // end if (sd_available)
@@ -2127,8 +2344,28 @@ void handle_root() {
     config_server.send(200, "text/html", html);
 }
 
-void handle_scan_wifi() {
-    int n = WiFi.scanNetworks();
+// ── Background WiFi scan cache ───────────────────────────────────────────────
+// The scan runs asynchronously from poll_wifi_scan() called in loop().
+// handle_scan_wifi() returns the cached result instantly so the HTTP
+// connection is never held open during the radio sweep (which drops AP clients).
+static String   g_wifi_scan_cache    = "[]";  // last completed scan JSON
+static bool     g_wifi_scan_running  = false;
+static uint32_t g_wifi_scan_started  = 0;
+
+// Called from loop() — starts and collects async scans outside any HTTP handler.
+void poll_wifi_scan() {
+    if (!g_wifi_scan_running) return;
+    int n = WiFi.scanComplete();
+    if (n == WIFI_SCAN_RUNNING) {
+        // Still running — time out after 8 s to avoid a stuck state
+        if (millis() - g_wifi_scan_started > 8000) {
+            WiFi.scanDelete();
+            g_wifi_scan_running = false;
+        }
+        return;
+    }
+    // Scan finished (n >= 0) or failed (n == WIFI_SCAN_FAILED)
+    if (n < 0) n = 0;
     String json = "[";
     for (int i = 0; i < n; i++) {
         if (i > 0) json += ",";
@@ -2139,7 +2376,27 @@ void handle_scan_wifi() {
     }
     json += "]";
     WiFi.scanDelete();
-    config_server.send(200, "application/json", json);
+    g_wifi_scan_cache   = json;
+    g_wifi_scan_running = false;
+}
+
+void handle_scan_wifi() {
+    // Kick off a new background scan (no-op if one is already running).
+    if (!g_wifi_scan_running) {
+        WiFi.scanNetworks(/*async=*/true);
+        g_wifi_scan_running = true;
+        g_wifi_scan_started = millis();
+        // Return "scanning" so the browser retries — do NOT block here.
+        config_server.send(202, "application/json", "{\"scanning\":true}");
+        return;
+    }
+    // A scan is in progress — tell the browser to retry in a moment.
+    config_server.send(202, "application/json", "{\"scanning\":true}");
+}
+
+void handle_scan_wifi_results() {
+    // Returns the cached results (or empty array if no scan done yet).
+    config_server.send(200, "application/json", g_wifi_scan_cache);
 }
 
 static String rssi_bar(int rssi) {
@@ -2188,32 +2445,44 @@ void handle_network_page() {
     html += "</form>";
     html += "<p style='text-align:center; margin-top:10px;'><a href='/'>Back</a></p>";
 
-    // JavaScript for WiFi scanning
+    // JavaScript for WiFi scanning — two-phase: kick /scan-wifi then poll /scan-wifi-results
     html += "<script>"
+            "function renderNets(nets){"
+              "var btn=document.getElementById('scanBtn');"
+              "var div=document.getElementById('scanResults');"
+              "if(!nets.length){div.innerHTML='No networks found.';btn.disabled=false;btn.textContent='Scan';return;}"
+              "nets.sort(function(a,b){return b.rssi-a.rssi;});"
+              "var seen={};"
+              "var t='<table style=\"width:100%;border-collapse:collapse;font-size:0.9em\">';"
+              "t+='<tr style=\"background:#e3edf7\"><th style=\"padding:4px 6px;text-align:left\">SSID</th><th>Signal</th><th>Sec</th><th></th></tr>';"
+              "nets.forEach(function(n){"
+                "if(seen[n.ssid])return;seen[n.ssid]=1;"
+                "var pct=Math.min(100,Math.max(0,2*(n.rssi+100)));"
+                "var col=pct>60?'#2a2':pct>30?'#da2':'#d22';"
+                "var bar='<span style=\"display:inline-block;width:60px;background:#eee;border-radius:3px;height:10px\">"
+                  "<span style=\"display:inline-block;width:'+pct+'%;background:'+col+';height:100%;border-radius:3px\"></span></span> '+n.rssi+'dBm';"
+                "t+='<tr style=\"border-bottom:1px solid #ddd\"><td style=\"padding:4px 6px\">'+n.ssid+'</td><td style=\"text-align:center\">'+bar+'</td>"
+                  "<td style=\"text-align:center\">'+(n.enc?'&#128274;':'Open')+'</td>"
+                  "<td><button type=\"button\" style=\"padding:2px 8px;cursor:pointer\" onclick=\"pickSsid(\\''+n.ssid.replace(/'/g,\"\\\\'\")+'\\')\">&rarr;</button></td></tr>';"
+              "});"
+              "t+='</table>';div.innerHTML=t;"
+              "btn.disabled=false;btn.textContent='Scan';"
+            "}"
+            "function pollResults(attempts){"
+              "if(attempts<=0){document.getElementById('scanResults').innerHTML='Scan timed out.';document.getElementById('scanBtn').disabled=false;document.getElementById('scanBtn').textContent='Scan';return;}"
+              "setTimeout(function(){"
+                "fetch('/scan-wifi-results').then(function(r){return r.json();}).then(function(nets){"
+                  "renderNets(nets);"
+                "}).catch(function(){pollResults(attempts-1);});"
+              "},1500);"
+            "}"
             "function scanWifi(){"
               "var btn=document.getElementById('scanBtn');"
               "var div=document.getElementById('scanResults');"
               "btn.disabled=true;btn.textContent='Scanning...';"
-              "div.style.display='block';div.innerHTML='Scanning...';"
-              "fetch('/scan-wifi').then(r=>r.json()).then(nets=>{"
-                "if(!nets.length){div.innerHTML='No networks found.';btn.disabled=false;btn.textContent='Scan';return;}"
-                "nets.sort((a,b)=>b.rssi-a.rssi);"
-                "var seen={};"
-                "var t='<table style=\"width:100%;border-collapse:collapse;font-size:0.9em\">';"
-                "t+='<tr style=\"background:#e3edf7\"><th style=\"padding:4px 6px;text-align:left\">SSID</th><th>Signal</th><th>Sec</th><th></th></tr>';"
-                "nets.forEach(n=>{"
-                  "if(seen[n.ssid])return;seen[n.ssid]=1;"
-                  "var pct=Math.min(100,Math.max(0,2*(n.rssi+100)));"
-                  "var col=pct>60?'#2a2':pct>30?'#da2':'#d22';"
-                  "var bar='<span style=\"display:inline-block;width:60px;background:#eee;border-radius:3px;height:10px\">"
-                    "<span style=\"display:inline-block;width:'+pct+'%;background:'+col+';height:100%;border-radius:3px\"></span></span> '+n.rssi+'dBm';"
-                  "t+='<tr style=\"border-bottom:1px solid #ddd\"><td style=\"padding:4px 6px\">'+n.ssid+'</td><td style=\"text-align:center\">'+bar+'</td>"
-                    "<td style=\"text-align:center\">'+(n.enc?'&#128274;':'Open')+'</td>"
-                    "<td><button type=\"button\" style=\"padding:2px 8px;cursor:pointer\" onclick=\"pickSsid(\\''+n.ssid.replace(/'/g,\"\\\\'\")+'\\')\">&rarr;</button></td></tr>';"
-                "});"
-                "t+='</table>';div.innerHTML=t;"
-                "btn.disabled=false;btn.textContent='Scan';"
-              "}).catch(e=>{div.innerHTML='Scan failed: '+e;btn.disabled=false;btn.textContent='Scan';});"
+              "div.style.display='block';div.innerHTML='Scanning (takes ~4s)...';"
+              // Kick off the scan — returns 202 immediately, radio sweeps in background
+              "fetch('/scan-wifi').then(function(){pollResults(8);}).catch(function(e){div.innerHTML='Scan error: '+e;btn.disabled=false;btn.textContent='Scan';});"
             "}"
             "function pickSsid(s){document.getElementById('ssid').value=s;}"
             "</script>";
@@ -2571,6 +2840,17 @@ void setup_network() {
         config_server.send(204);
     });
     config_server.on("/gauges/screen", handle_gauges_screen);
+    config_server.on("/gauges/switch", []() {
+        // Lightweight endpoint: switch physical display to requested screen.
+        // Called by showScreenTab() on every tab click, even when the fragment
+        // is served from the JS cache and no full /gauges/screen request is made.
+        int s = config_server.arg("s").toInt();
+        if (s >= 0 && s < NUM_SCREENS) {
+            g_config_page_last_seen = millis();
+            ui_set_screen(s + 1);  // 1-based
+        }
+        config_server.send(204);
+    });
     config_server.on("/save-gauges", HTTP_POST, handle_save_gauges);
     config_server.on("/needles", handle_needles_page);
     config_server.on("/save-needles", HTTP_POST, handle_save_needles);
@@ -2581,6 +2861,7 @@ void setup_network() {
     config_server.on("/network", handle_network_page);
     config_server.on("/save-wifi", HTTP_POST, handle_save_wifi);
     config_server.on("/scan-wifi", HTTP_GET, handle_scan_wifi);
+    config_server.on("/scan-wifi-results", HTTP_GET, handle_scan_wifi_results);
     config_server.on("/device", handle_device_page);
     config_server.on("/save-device", HTTP_POST, handle_save_device);
     config_server.on("/test-gauge", HTTP_POST, handle_test_gauge);

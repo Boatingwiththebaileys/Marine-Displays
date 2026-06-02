@@ -25,6 +25,16 @@ void set_auto_scroll_interval(uint16_t sec);
 // Initialize network (WiFi + WebServer) with web UI for configuration
 void setup_network();
 
+// Call from loop() to collect async WiFi scan results into the cache
+void poll_wifi_scan();
+
+// Returns the custom display label for a given screen/slot, or "" if not set.
+// Slot 0 = primary (Number / Dual-top / Quad-TL / GaugeNum-center)
+// Slot 1 = secondary (Dual-bottom / Quad-TR)
+// Slot 2 = tertiary  (Quad-BL)
+// Slot 3 = quaternary(Quad-BR)
+const char* get_custom_label(int screen_idx, int slot);
+
 // Set this flag from any context to request apply_all_screen_visuals() be called
 // safely from loop() on the next iteration, avoiding LVGL access from HTTP handlers.
 extern volatile bool g_pending_visual_apply;

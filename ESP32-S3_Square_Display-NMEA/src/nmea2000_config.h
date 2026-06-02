@@ -116,6 +116,7 @@ enum N2kField : uint16_t {
     // ── Depth (PGN 128267) ───────────────────────────────────────────
     N2K_WATER_DEPTH            = 50,
     N2K_DEPTH_OFFSET           = 51,
+    N2K_DEPTH_BELOW_KEEL       = 52,  // computed: depth + offset
 
     // ── Wind (PGN 130306) ────────────────────────────────────────────
     N2K_WIND_SPEED_APPARENT    = 60,
