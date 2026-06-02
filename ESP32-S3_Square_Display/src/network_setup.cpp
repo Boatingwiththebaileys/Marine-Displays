@@ -840,27 +840,62 @@ void handle_gauges_page() {
     html += "<script>\n";
     html += "var NUM_SCREENS=" + String(NUM_SCREENS) + ";\n";
     html += "var currentTab=-1;\n";
+    // Preload generation counter — incremented on every deliberate tab click so
+    // any in-flight background preload loop aborts and the user's request wins.
+    html += "var preloadGen=0;\n";
+    html += "var fragmentCache={};\n";
 
-    // showScreenTab: fetch a single screen's config HTML from the device
+    // showScreenTab: switch tab + load fragment (from cache or device)
     html += "function showScreenTab(idx){\n";
     html += "  if(idx===currentTab) return;\n";
+    html += "  ++preloadGen;\n";
     html += "  currentTab=idx;\n";
     html += "  document.getElementById('save_screen').value=idx;\n";
     html += "  for(var s=0;s<NUM_SCREENS;s++){\n";
     html += "    var b=document.getElementById('tabbtn_'+s);\n";
     html += "    if(b) b.style.background=(s===idx?'#e3eaf6':'#f4f6fa');\n";
     html += "  }\n";
+    html += "  loadScreenFragment(idx);\n";
+    html += "}\n";
+
+    // loadScreenFragment: serve from cache if available, else fetch from device
+    html += "function loadScreenFragment(idx){\n";
     html += "  var cont=document.getElementById('screen-content');\n";
+    html += "  if(fragmentCache[idx]){\n";
+    html += "    cont.innerHTML=fragmentCache[idx];\n";
+    html += "    setTimeout(function(){initScreenTab(idx);},10);\n";
+    html += "    return;\n";
+    html += "  }\n";
     html += "  cont.innerHTML='<p style=\"text-align:center;color:#888;padding:40px 0;\">Loading...</p>';\n";
     html += "  fetch('/gauges/screen?s='+idx)\n";
     html += "    .then(function(r){return r.text();})\n";
     html += "    .then(function(h){\n";
+    html += "      fragmentCache[idx]=h;\n";
     html += "      cont.innerHTML=h;\n";
     html += "      setTimeout(function(){initScreenTab(idx);},10);\n";
+    html += "      preloadFragments(idx);\n";
     html += "    })\n";
     html += "    .catch(function(e){\n";
-    html += "      cont.innerHTML='<p style=\"color:red;text-align:center;\">Failed to load – '+e+'</p>';\n";
+    html += "      cont.innerHTML='<p style=\"color:red;text-align:center;\">Failed to load \u2013 '+e+'</p>';\n";
     html += "    });\n";
+    html += "}\n";
+
+    // preloadFragments: silently fetch remaining tabs in background.
+    // Aborts immediately if the user clicks a tab (preloadGen incremented).
+    html += "function preloadFragments(skipIdx){\n";
+    html += "  var gen=preloadGen;\n";
+    html += "  var order=[];\n";
+    html += "  for(var s=0;s<NUM_SCREENS;s++){if(s!==skipIdx&&!fragmentCache[s])order.push(s);}\n";
+    html += "  var i=0;\n";
+    html += "  function next(){\n";
+    html += "    if(gen!==preloadGen||i>=order.length)return;\n";
+    html += "    var si=order[i++];\n";
+    html += "    fetch('/gauges/screen?s='+si)\n";
+    html += "      .then(function(r){return r.text();})\n";
+    html += "      .then(function(h){if(!fragmentCache[si])fragmentCache[si]=h;setTimeout(next,600);})\n";
+    html += "      .catch(function(){setTimeout(next,800);});\n";
+    html += "  }\n";
+    html += "  setTimeout(next,600);\n";
     html += "}\n";
 
     // initScreenTab: called after injecting screen HTML — set up toggles
