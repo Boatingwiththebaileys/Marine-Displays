@@ -11,6 +11,7 @@
 #include "position_display.h"
 #include "ais_display.h"
 #include "attitude_display.h"
+#include "anchor_display.h"
 #include <lvgl.h>
 #include "esp_log.h"
 #include <Arduino.h>
@@ -386,6 +387,29 @@ bool apply_screen_visuals_for_one(int s) {
             lv_obj_t *bot_icon = get_bottom_icon_obj_for_screen(s);
             if (top_icon) lv_obj_add_flag(top_icon, LV_OBJ_FLAG_HIDDEN);
             if (bot_icon) lv_obj_add_flag(bot_icon, LV_OBJ_FLAG_HIDDEN);            attitude_display_create(s);
+            any = true;
+        } else if (screen_configs[s].display_type == DISPLAY_TYPE_ANCHOR) {
+            Serial.printf("[APPLY_ONE] s=%d → ANCHOR\n", s);
+            number_display_destroy(s);
+            dual_number_display_destroy(s);
+            quad_number_display_destroy(s);
+            gauge_number_display_destroy(s);
+            graph_display_destroy(s);
+            compass_display_destroy(s);
+            mark_compass_display_destroyed(s + 1);
+            position_display_destroy(s);
+            mark_position_display_destroyed(s + 1);
+            ais_display_destroy(s);
+            attitude_display_destroy(s);
+            lv_obj_t *upper_needle = get_upper_needle_obj_for_screen(s);
+            lv_obj_t *lower_needle = get_lower_needle_obj_for_screen(s);
+            if (upper_needle) lv_obj_add_flag(upper_needle, LV_OBJ_FLAG_HIDDEN);
+            if (lower_needle) lv_obj_add_flag(lower_needle, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_t *top_icon = get_top_icon_obj_for_screen(s);
+            lv_obj_t *bot_icon = get_bottom_icon_obj_for_screen(s);
+            if (top_icon) lv_obj_add_flag(top_icon, LV_OBJ_FLAG_HIDDEN);
+            if (bot_icon) lv_obj_add_flag(bot_icon, LV_OBJ_FLAG_HIDDEN);
+            anchor_display_create(s);
             any = true;
         } else {
             // DISPLAY_TYPE_GAUGE (default) — destroy all non-gauge overlays and restore needles
