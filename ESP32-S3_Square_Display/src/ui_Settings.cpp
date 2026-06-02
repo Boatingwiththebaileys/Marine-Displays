@@ -8,6 +8,8 @@
 
 #include <Preferences.h>
 
+static uint8_t v4_slider_to_pwm(uint16_t slider_val);
+
 extern lv_obj_t *ui_Screen1;  // Reference to main screen
 extern lv_obj_t *ui_Screen2;
 extern lv_obj_t *ui_Screen3;
@@ -23,6 +25,8 @@ int previous_screen_before_settings = 1;
 lv_obj_t *ui_Settings = NULL;
 lv_obj_t *ui_SettingsPanel = NULL;
 lv_obj_t *ui_IPLabel = NULL;
+lv_obj_t *ui_APCredsLabel = NULL;
+lv_obj_t *ui_RSSITitle = NULL;
 lv_obj_t *ui_RSSILabel = NULL;
 lv_obj_t *ui_RSSIBar = NULL;
 lv_obj_t *ui_BackButton = NULL;
@@ -47,6 +51,8 @@ uint8_t brightness_level = 0;
 static lv_obj_t *night_overlays[6] = {NULL}; // 0-4 = Screen1-5, 5 = Settings
 static lv_obj_t *ui_BrightnessDrop = NULL;
 static lv_obj_t *ui_BrightnessLevelLabel = NULL;
+static lv_obj_t *ui_BrightnessSliderWidget = NULL;  // brightness slider (both V3 and V4)
+static lv_obj_t *ui_BrightnessPctLabel = NULL;       // value label (V4: %, V3: mode name)
 
 
 // Buzzer alert function.
@@ -61,16 +67,20 @@ extern "C" void trigger_buzzer_alert() {
 
     if (is_board_v4()) {
       // V4 (CH32V003): BEE_EN = EXIO6/bit6 = PIN_BEE_EN (pin 7).
-      // Temporarily make BEE_EN an output to drive the buzzer.
-      Mode_EXIO(PIN_BEE_EN, 0);   // output mode
-      Set_EXIO(PIN_BEE_EN, High); // buzzer ON
+      // Direction is 0xFF (all outputs). Write full register values directly
+      // (not shadow-based read-modify-write) so shadow desync can't silence us.
+      // Re-assert DIR=0xFF first in case it was corrupted by io_expander library.
+      printf("[BUZ] v4 beep: dir_shadow=0x%02x out_shadow=0x%02x\n",
+             ch32v003_get_dir_shadow(), ch32v003_get_out_shadow());
+      I2C_Write_EXIO(CH32V003_DIR_REG, CH32V003_DIR_ALL_OUT);    // ensure DIR=0xFF
+      I2C_Write_EXIO(CH32V003_OUTPUT_REG, CH32V003_OUT_BUZZER);  // 0x7A: BEE_EN HIGH
       ets_delay_us(200000);
-      Set_EXIO(PIN_BEE_EN, Low);  // buzzer OFF
+      I2C_Write_EXIO(CH32V003_OUTPUT_REG, CH32V003_OUT_NORMAL);  // 0x3A: BEE_EN LOW
       ets_delay_us(100000);
-      Set_EXIO(PIN_BEE_EN, High); // buzzer ON
+      I2C_Write_EXIO(CH32V003_OUTPUT_REG, CH32V003_OUT_BUZZER);  // 0x7A: BEE_EN HIGH
       ets_delay_us(200000);
-      Set_EXIO(PIN_BEE_EN, Low);  // buzzer OFF
-      Mode_EXIO(PIN_BEE_EN, 1);   // back to input (safe)
+      I2C_Write_EXIO(CH32V003_OUTPUT_REG, CH32V003_OUT_NORMAL);  // 0x3A: BEE_EN LOW
+      printf("[BUZ] v4 beep done\n");
     } else {
       // V3: buzzer on EXIO_PIN6 (bit5)
       Set_EXIOS(Read_EXIOS(exio_output_reg()) & (uint8_t)~(1 << (EXIO_PIN6 - 1)));
@@ -109,19 +119,48 @@ static void buzzer_switch_event_cb(lv_event_t *e)
 // Update IP address and RSSI when screen is shown
 extern "C" void update_ip_address(void)
 {
+    bool connected = (WiFi.status() == WL_CONNECTED);
+    IPAddress apIP = WiFi.softAPIP();
+    bool in_ap_mode = !connected && apIP != INADDR_NONE && apIP != IPAddress(0, 0, 0, 0);
+
     if (ui_IPLabel != NULL) {
-        if (WiFi.status() == WL_CONNECTED) {
+        if (connected) {
             String ip = WiFi.localIP().toString();
             lv_label_set_text(ui_IPLabel, ip.c_str());
             lv_obj_set_style_text_color(ui_IPLabel, lv_color_hex(0x00FF00), 0);
+        } else if (in_ap_mode) {
+            String apStr = "AP: " + apIP.toString();
+            lv_label_set_text(ui_IPLabel, apStr.c_str());
+            lv_obj_set_style_text_color(ui_IPLabel, lv_color_hex(0xFFAA00), 0);
         } else {
             lv_label_set_text(ui_IPLabel, "Not Connected");
             lv_obj_set_style_text_color(ui_IPLabel, lv_color_hex(0x808080), 0);
         }
     }
-    // Update WiFi signal strength bar and label
-    if (ui_RSSIBar != NULL && ui_RSSILabel != NULL) {
-        if (WiFi.status() == WL_CONNECTED) {
+
+    // In AP mode: show SSID/password, hide RSSI. When connected: show RSSI, hide creds.
+    if (ui_APCredsLabel != NULL) {
+        if (in_ap_mode) {
+            lv_label_set_text(ui_APCredsLabel, "SSID: ESP32-SquareDisplay\nPass: 12345678");
+            lv_obj_clear_flag(ui_APCredsLabel, LV_OBJ_FLAG_HIDDEN);
+        } else {
+            lv_obj_add_flag(ui_APCredsLabel, LV_OBJ_FLAG_HIDDEN);
+        }
+    }
+    if (ui_RSSIBar != NULL) {
+        if (in_ap_mode) lv_obj_add_flag(ui_RSSIBar, LV_OBJ_FLAG_HIDDEN);
+        else lv_obj_clear_flag(ui_RSSIBar, LV_OBJ_FLAG_HIDDEN);
+    }
+    if (ui_RSSITitle != NULL) {
+        if (in_ap_mode) lv_obj_add_flag(ui_RSSITitle, LV_OBJ_FLAG_HIDDEN);
+        else lv_obj_clear_flag(ui_RSSITitle, LV_OBJ_FLAG_HIDDEN);
+    }
+    if (ui_RSSILabel != NULL) {
+        if (in_ap_mode) {
+            lv_obj_add_flag(ui_RSSILabel, LV_OBJ_FLAG_HIDDEN);
+        } else {
+            lv_obj_clear_flag(ui_RSSILabel, LV_OBJ_FLAG_HIDDEN);
+            if (connected) {
             int rssi = WiFi.RSSI();
             int pct = constrain(2 * (rssi + 100), 0, 100);
             lv_bar_set_value(ui_RSSIBar, pct, LV_ANIM_ON);
@@ -140,6 +179,7 @@ extern "C" void update_ip_address(void)
             lv_obj_set_style_bg_color(ui_RSSIBar, lv_color_hex(0x808080), LV_PART_INDICATOR);
             lv_label_set_text(ui_RSSILabel, "No Signal");
             lv_obj_set_style_text_color(ui_RSSILabel, lv_color_hex(0x808080), 0);
+        }
         }
     }
 }
@@ -177,9 +217,27 @@ extern "C" void update_settings_values(void)
         lv_dropdown_set_selected(ui_AutoScrollDrop, sel);
     }
     
-    // Update brightness dropdown
-    if (ui_BrightnessDrop != NULL) {
-        lv_dropdown_set_selected(ui_BrightnessDrop, brightness_level);
+    // Update brightness slider
+    if (ui_BrightnessSliderWidget != NULL) {
+        lv_slider_set_value(ui_BrightnessSliderWidget, brightness_level, LV_ANIM_OFF);
+    }
+    if (ui_BrightnessPctLabel != NULL) {
+        if (is_board_v4()) {
+            uint16_t sv = brightness_level;
+            uint8_t pwm = v4_slider_to_pwm(sv);
+            if (sv >= 110) {
+                char buf[8];
+                snprintf(buf, sizeof(buf), "%d%%", pwm);
+                lv_label_set_text(ui_BrightnessPctLabel, buf);
+            } else {
+                char buf[12];
+                snprintf(buf, sizeof(buf), "R:%d%%", pwm);
+                lv_label_set_text(ui_BrightnessPctLabel, buf);
+            }
+        } else {
+            static const char *slabels[] = {"Normal", "Dim", "Night", "Night+"};
+            lv_label_set_text(ui_BrightnessPctLabel, slabels[brightness_level < 4 ? brightness_level : 0]);
+        }
     }
 
     // Update screen off timeout dropdown
@@ -228,7 +286,6 @@ static void swipe_up_event_cb(lv_event_t *e)
         
         // Check for upward swipe (delta_y < -50 and mostly vertical)
         if (delta_y < -50 && abs(delta_y) > abs(delta_x)) {
-            printf("SWIPE UP DETECTED - Returning to screen %d\n", previous_screen_before_settings);
             // Return to the screen that was active before settings opened
             lv_obj_t* target_screen = ui_Screen1;  // Default to Screen1
             switch(previous_screen_before_settings) {
@@ -296,31 +353,154 @@ extern "C" void night_mode_init_overlays(void) {
     }
 }
 
+// Non-linear slider-to-PWM mapping for V4.
+// Quadratic curve gives more slider resolution at lower brightness.
+static uint8_t v4_slider_to_pwm(uint16_t slider_val) {
+    if (slider_val >= 110) {
+        // Normal range: slider 110-200 -> PWM 10-100%
+        float frac = (float)(slider_val - 110) / 90.0f;
+        return (uint8_t)(10 + (int)(frac * frac * 90.0f));
+    } else {
+        // Red range: slider 10-109 -> PWM 10-100%
+        float frac = (float)(slider_val - 10) / 99.0f;
+        return (uint8_t)(10 + (int)(frac * frac * 90.0f));
+    }
+}
+
+// Deferred NVS save for brightness — avoids dozens of flash writes while sliding
+static uint8_t  g_brightness_pending = 0;
+static bool     g_brightness_dirty   = false;
+static uint32_t g_brightness_last_change_ms = 0;
+static const uint32_t BRIGHTNESS_NVS_DEFER_MS = 1000; // save 1s after last change
+
+// Call from loop() or an LVGL timer to flush deferred brightness save
+extern "C" void brightness_nvs_flush(void) {
+    if (g_brightness_dirty &&
+        (millis() - g_brightness_last_change_ms) >= BRIGHTNESS_NVS_DEFER_MS) {
+        g_brightness_dirty = false;
+        if (is_board_v4()) {
+            // Apply final PWM value directly (don't call set_brightness_level
+            // which would re-dirty the flag and cause an infinite save loop)
+            uint16_t sv = g_brightness_pending;
+            uint8_t pwm = v4_slider_to_pwm(sv);
+            extern void Set_Backlight(uint8_t Light);
+            Set_Backlight(pwm);
+            // Persist raw slider value (10-200) as UShort
+            Preferences pn;
+            if (pn.begin("settings", false)) {
+                pn.putUShort("brightness_v4", (uint16_t)g_brightness_pending);
+                pn.end();
+            }
+        } else {
+            Preferences pn;
+            if (pn.begin("settings", false)) {
+                pn.putUChar("brightness_lv", g_brightness_pending);
+                pn.end();
+            }
+        }
+        Serial.printf("[BRIGHT] NVS saved: %d\n", g_brightness_pending);
+    }
+}
+
+// Throttle V4 I2C PWM writes to avoid corrupting CH32V003 expander state
+static uint32_t g_last_pwm_write_ms = 0;
+static const uint32_t PWM_WRITE_MIN_INTERVAL_MS = 50;
+
 extern "C" void set_brightness_level(uint8_t level) {
     brightness_level = level;
-    for (int i = 0; i < 6; i++) {
-        if (night_overlays[i]) {
-            if (level > 0) {
-                apply_overlay_style(night_overlays[i], level);
-                lv_obj_clear_flag(night_overlays[i], LV_OBJ_FLAG_HIDDEN);
-            } else {
-                lv_obj_add_flag(night_overlays[i], LV_OBJ_FLAG_HIDDEN);
-            }
-            lv_obj_move_foreground(night_overlays[i]);
+    if (is_board_v4()) {
+        // V4 unified slider 10-200:
+        //   200→110: PWM brightness (level-100)% with no overlay
+        //   109→10:  red overlay mode, PWM = level%
+        uint16_t slider_val = level; // raw slider value 10-200
+        if (slider_val > 200) slider_val = 200;
+        if (slider_val < 10) slider_val = 10;
+        brightness_level = (uint8_t)slider_val;
+
+        bool red_mode = (slider_val < 110);
+        uint8_t pwm_pct = v4_slider_to_pwm(slider_val);
+
+        // Apply PWM backlight (throttled)
+        uint32_t now = millis();
+        if ((now - g_last_pwm_write_ms) >= PWM_WRITE_MIN_INTERVAL_MS) {
+            g_last_pwm_write_ms = now;
+            extern void Set_Backlight(uint8_t Light);
+            Set_Backlight(pwm_pct);
         }
+
+        // Apply/remove red overlay
+        if (red_mode) {
+            // Overlay opacity: slider 109→10 → light to heavy red
+            // Map slider_val 10-109 to opacity 30-230
+            uint8_t opa = (uint8_t)(230 - ((slider_val - 10) * 200 / 99));
+            for (int i = 0; i < 6; i++) {
+                if (night_overlays[i]) {
+                    lv_obj_set_style_bg_color(night_overlays[i], lv_color_make(40, 0, 0), 0);
+                    lv_obj_set_style_bg_opa(night_overlays[i], opa, 0);
+                    lv_obj_clear_flag(night_overlays[i], LV_OBJ_FLAG_HIDDEN);
+                    lv_obj_move_foreground(night_overlays[i]);
+                }
+            }
+        } else {
+            // Hide red overlays
+            for (int i = 0; i < 6; i++) {
+                if (night_overlays[i]) {
+                    lv_obj_add_flag(night_overlays[i], LV_OBJ_FLAG_HIDDEN);
+                }
+            }
+        }
+
+        // Update slider widget if it exists
+        if (ui_BrightnessSliderWidget) {
+            lv_slider_set_value(ui_BrightnessSliderWidget, slider_val, LV_ANIM_OFF);
+        }
+        if (ui_BrightnessPctLabel) {
+            if (!red_mode) {
+                char buf[8];
+                snprintf(buf, sizeof(buf), "%d%%", pwm_pct);
+                lv_label_set_text(ui_BrightnessPctLabel, buf);
+            } else {
+                char buf[12];
+                snprintf(buf, sizeof(buf), "R:%d%%", pwm_pct);
+                lv_label_set_text(ui_BrightnessPctLabel, buf);
+            }
+        }
+        // Defer NVS persist
+        g_brightness_pending = brightness_level;
+        g_brightness_dirty = true;
+        g_brightness_last_change_ms = millis();
+    } else {
+        // V3: use overlay-based 4-step dimming (level 0-3)
+        if (level > 3) level = 0;
+        brightness_level = level;
+        for (int i = 0; i < 6; i++) {
+            if (night_overlays[i]) {
+                if (level > 0) {
+                    apply_overlay_style(night_overlays[i], level);
+                    lv_obj_clear_flag(night_overlays[i], LV_OBJ_FLAG_HIDDEN);
+                } else {
+                    lv_obj_add_flag(night_overlays[i], LV_OBJ_FLAG_HIDDEN);
+                }
+                lv_obj_move_foreground(night_overlays[i]);
+            }
+        }
+        // Update slider widget if it exists
+        if (ui_BrightnessSliderWidget) {
+            lv_slider_set_value(ui_BrightnessSliderWidget, level, LV_ANIM_OFF);
+        }
+        if (ui_BrightnessPctLabel) {
+            static const char *slabels[] = {"Normal", "Dim", "Night", "Night+"};
+            lv_label_set_text(ui_BrightnessPctLabel, slabels[level < 4 ? level : 0]);
+        }
+        // V3 has only 4 positions so NVS write is fine immediately
+        Preferences pn;
+        if (pn.begin("settings", false)) {
+            pn.putUChar("brightness_lv", level);
+            pn.end();
+        }
+        static const char *labels[] = {"Normal", "Dim", "Night", "Night+"};
+        Serial.printf("[BRIGHT] Brightness: %s\n", labels[level < 4 ? level : 0]);
     }
-    // Update dropdown widget if it exists
-    if (ui_BrightnessDrop) {
-        lv_dropdown_set_selected(ui_BrightnessDrop, level);
-    }
-    // Persist to NVS
-    Preferences pn;
-    if (pn.begin("settings", false)) {
-        pn.putUChar("brightness_lv", level);
-        pn.end();
-    }
-    static const char *labels[] = {"Normal", "Dim", "Night", "Night+"};
-    Serial.printf("[BRIGHT] Brightness: %s\n", labels[level < 4 ? level : 0]);
 }
 
 extern "C" void ui_Settings_screen_init(void)
@@ -467,14 +647,26 @@ extern "C" void ui_Settings_screen_init(void)
     lv_obj_set_x(ui_IPLabel, 70);
     lv_obj_set_y(ui_IPLabel, -150);
     lv_obj_set_align(ui_IPLabel, LV_ALIGN_CENTER);
+
+    // AP credentials label (shown instead of RSSI when in AP mode)
+    ui_APCredsLabel = lv_label_create(ui_SettingsPanel);
+    lv_label_set_text(ui_APCredsLabel, "SSID: ESP32-SquareDisplay\nPass: 12345678");
+    lv_obj_set_style_text_color(ui_APCredsLabel, lv_color_hex(0xFFAA00), 0);
+    lv_obj_set_style_text_font(ui_APCredsLabel, &lv_font_montserrat_14, 0);
+    lv_obj_set_x(ui_APCredsLabel, 0);
+    lv_obj_set_y(ui_APCredsLabel, -100);
+    lv_obj_set_align(ui_APCredsLabel, LV_ALIGN_CENTER);
+    lv_label_set_long_mode(ui_APCredsLabel, LV_LABEL_LONG_WRAP);
+    lv_obj_set_width(ui_APCredsLabel, 260);
+    lv_obj_add_flag(ui_APCredsLabel, LV_OBJ_FLAG_HIDDEN);
     
     // WiFi Signal Strength row
-    lv_obj_t *rssi_title = lv_label_create(ui_SettingsPanel);
-    lv_label_set_text(rssi_title, "WiFi Signal:");
-    lv_obj_set_style_text_color(rssi_title, lv_color_hex(0xFFFFFF), 0);
-    lv_obj_set_x(rssi_title, -110);
-    lv_obj_set_y(rssi_title, -100);
-    lv_obj_set_align(rssi_title, LV_ALIGN_CENTER);
+    ui_RSSITitle = lv_label_create(ui_SettingsPanel);
+    lv_label_set_text(ui_RSSITitle, "WiFi Signal:");
+    lv_obj_set_style_text_color(ui_RSSITitle, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_x(ui_RSSITitle, -110);
+    lv_obj_set_y(ui_RSSITitle, -100);
+    lv_obj_set_align(ui_RSSITitle, LV_ALIGN_CENTER);
     
     // RSSI bar
     ui_RSSIBar = lv_bar_create(ui_SettingsPanel);
@@ -588,36 +780,78 @@ extern "C" void ui_Settings_screen_init(void)
         g_last_activity_ms = millis();
     }, LV_EVENT_VALUE_CHANGED, NULL);
 
-    // Brightness dropdown
+    // Brightness control — V4: PWM slider (0-100%), V3: 4-step overlay dropdown
     ui_BrightnessLevelLabel = lv_label_create(ui_SettingsPanel);
     lv_label_set_text(ui_BrightnessLevelLabel, "Brightness:");
     lv_obj_set_style_text_color(ui_BrightnessLevelLabel, lv_color_hex(0xFFFFFF), 0);
-    lv_obj_set_x(ui_BrightnessLevelLabel, -70);
-    lv_obj_set_y(ui_BrightnessLevelLabel, 130);
+    lv_obj_set_x(ui_BrightnessLevelLabel, -90);
+    lv_obj_set_y(ui_BrightnessLevelLabel, 145);
     lv_obj_set_align(ui_BrightnessLevelLabel, LV_ALIGN_CENTER);
 
-    ui_BrightnessDrop = lv_dropdown_create(ui_SettingsPanel);
-    lv_dropdown_set_options(ui_BrightnessDrop, "Normal\nDim\nNight\nNight+");
-    lv_obj_set_width(ui_BrightnessDrop, 110);
-    lv_obj_set_x(ui_BrightnessDrop, 40);
-    lv_obj_set_y(ui_BrightnessDrop, 130);
-    lv_obj_set_align(ui_BrightnessDrop, LV_ALIGN_CENTER);
+    ui_BrightnessSliderWidget = lv_slider_create(ui_SettingsPanel);
+    lv_obj_set_width(ui_BrightnessSliderWidget, 100);
+    lv_obj_set_x(ui_BrightnessSliderWidget, 25);
+    lv_obj_set_y(ui_BrightnessSliderWidget, 145);
+    lv_obj_set_align(ui_BrightnessSliderWidget, LV_ALIGN_CENTER);
 
-    // Load brightness level from NVS
-    {
-        Preferences pnm;
-        if (pnm.begin("settings", true)) {
-            brightness_level = pnm.getUChar("brightness_lv", 0);
-            if (brightness_level > 3) brightness_level = 0;
-            pnm.end();
+    ui_BrightnessPctLabel = lv_label_create(ui_SettingsPanel);
+    lv_obj_set_style_text_color(ui_BrightnessPctLabel, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_x(ui_BrightnessPctLabel, 120);
+    lv_obj_set_y(ui_BrightnessPctLabel, 145);
+    lv_obj_set_align(ui_BrightnessPctLabel, LV_ALIGN_CENTER);
+
+    if (is_board_v4()) {
+        // V4: unified slider 10-200
+        // 200→110: normal PWM backlight 100%→10% (no overlay)
+        // 109→10:  red overlay mode, PWM 100%→10%
+        lv_slider_set_range(ui_BrightnessSliderWidget, 10, 200);
+        {
+            Preferences pnm;
+            if (pnm.begin("settings", true)) {
+                uint16_t stored = pnm.getUShort("brightness_v4", 200);
+                if (stored > 200) stored = 200;
+                if (stored < 10) stored = 10;
+                brightness_level = (uint8_t)(stored > 255 ? 255 : stored);
+                pnm.end();
+            } else {
+                brightness_level = 200;
+            }
+            lv_slider_set_value(ui_BrightnessSliderWidget, brightness_level, LV_ANIM_OFF);
+            {
+                uint8_t pwm = v4_slider_to_pwm(brightness_level);
+                if (brightness_level >= 110) {
+                    char buf[8];
+                    snprintf(buf, sizeof(buf), "%d%%", pwm);
+                    lv_label_set_text(ui_BrightnessPctLabel, buf);
+                } else {
+                    char buf[12];
+                    snprintf(buf, sizeof(buf), "R:%d%%", pwm);
+                    lv_label_set_text(ui_BrightnessPctLabel, buf);
+                }
+            }
         }
-        lv_dropdown_set_selected(ui_BrightnessDrop, brightness_level);
+    } else {
+        // V3: 4-position slider (Normal/Dim/Night/Night+)
+        lv_slider_set_range(ui_BrightnessSliderWidget, 0, 3);
+        {
+            Preferences pnm;
+            if (pnm.begin("settings", true)) {
+                brightness_level = pnm.getUChar("brightness_lv", 0);
+                if (brightness_level > 3) brightness_level = 0;
+                pnm.end();
+            }
+            lv_slider_set_value(ui_BrightnessSliderWidget, brightness_level, LV_ANIM_OFF);
+            static const char *slabels[] = {"Normal", "Dim", "Night", "Night+"};
+            lv_label_set_text(ui_BrightnessPctLabel, slabels[brightness_level]);
+        }
     }
 
-    lv_obj_add_event_cb(ui_BrightnessDrop, [](lv_event_t *e){
-        lv_obj_t *dd = lv_event_get_target(e);
-        uint8_t lvl = (uint8_t)lv_dropdown_get_selected(dd);
-        set_brightness_level(lvl);
+    lv_obj_add_event_cb(ui_BrightnessSliderWidget, [](lv_event_t *e){
+        lv_obj_t *slider = lv_event_get_target(e);
+        int32_t val = lv_slider_get_value(slider);
+        if (val < 0) val = 0;
+        if (val > 255) val = 255;
+        set_brightness_level((uint8_t)val);
     }, LV_EVENT_VALUE_CHANGED, NULL);
 
     // Instruction text
@@ -625,7 +859,7 @@ extern "C" void ui_Settings_screen_init(void)
     lv_label_set_text(instruction, "Swipe up to return");
     lv_obj_set_style_text_color(instruction, lv_color_hex(0x808080), 0);
     lv_obj_set_x(instruction, 0);
-    lv_obj_set_y(instruction, 170);
+    lv_obj_set_y(instruction, 195);
     lv_obj_set_align(instruction, LV_ALIGN_CENTER);
 
     // Set current selection from persisted value

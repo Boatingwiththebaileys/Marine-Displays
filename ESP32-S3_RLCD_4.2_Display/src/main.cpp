@@ -87,6 +87,7 @@ void loop() {
                 last_scroll = millis();
                 int next = (get_current_screen() + 1) % NUM_SCREENS;
                 set_current_screen(next);
+                refresh_signalk_subscriptions();  // Update WebSocket subscriptions for new screen
             }
         }
     }

@@ -518,7 +518,8 @@ static void wsEvent(WStype_t type, uint8_t * payload, size_t length) {
 
 // Helper: begin WS connection
 static void ws_begin_connection() {
-    ws_client.begin(server_ip_str.c_str(), server_port_num, "/signalk/v1/stream");
+    // subscribe=none prevents server from firehosing all data on connect
+    ws_client.begin(server_ip_str.c_str(), server_port_num, "/signalk/v1/stream?subscribe=none");
     ws_client.onEvent(wsEvent);
 }
 

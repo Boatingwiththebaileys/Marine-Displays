@@ -9,6 +9,13 @@ extern "C" int ets_printf(const char *fmt, ...);
 uint8_t g_tca9554_address = TCA9554_ADDR_V3;
 static bool g_board_v4 = false;
 
+// V4 shadow registers — CH32V003 register reads are UNRELIABLE (return wrong
+// register values after writes to other registers, not just PWM→DIR but also
+// OUTPUT reads can return garbage).  We maintain software copies and never read
+// direction or output registers from hardware on V4.
+static uint8_t ch32v003_dir_shadow = CH32V003_DIR_ALL_OUT;  // 0xFF
+static uint8_t ch32v003_out_shadow = CH32V003_OUT_NORMAL;   // 0x3A
+
 bool detect_expander_address()
 {
   // Check NVS for a cached board version from a previous successful probe.
@@ -78,9 +85,22 @@ bool is_board_v4()
   return g_board_v4;
 }
 
+uint8_t ch32v003_get_dir_shadow() { return ch32v003_dir_shadow; }
+uint8_t ch32v003_get_out_shadow() { return ch32v003_out_shadow; }
+
 uint8_t exio_output_reg()
 {
   return g_board_v4 ? CH32V003_OUTPUT_REG : TCA9554_OUTPUT_REG;
+}
+
+uint8_t exio_dir_reg()
+{
+  return g_board_v4 ? CH32V003_DIR_REG : TCA9554_CONFIG_REG;
+}
+
+uint8_t exio_input_reg()
+{
+  return g_board_v4 ? CH32V003_INPUT_REG : TCA9554_INPUT_REG;
 }
 
 // Functional pin aliases — V4 pins shifted +1 vs V3 (CH32V003 added EXIO0/charger at bit0)
@@ -89,17 +109,34 @@ uint8_t pin_lcd_rst() { return g_board_v4 ? 4 : 3; }  // V3:IO2/bit2, V4:EXIO3/b
 uint8_t pin_sdcs()    { return g_board_v4 ? 5 : 4; }  // V3:IO3/bit3, V4:EXIO4/bit4
 
 /*****************************************************  Operation register REG   ****************************************************/   
+// Safe I2C read — returns false on failure, leaving *out unchanged.
+bool I2C_Read_EXIO_safe(uint8_t REG, uint8_t *out)
+{
+  // V4: direction and output register reads are UNRELIABLE — use shadow copies.
+  if (g_board_v4) {
+    if (REG == CH32V003_DIR_REG)    { *out = ch32v003_dir_shadow; return true; }
+    if (REG == CH32V003_OUTPUT_REG) { *out = ch32v003_out_shadow; return true; }
+  }
+  Wire.beginTransmission(TCA9554_ADDRESS);
+  Wire.write(REG);
+  if (Wire.endTransmission() != 0) {
+    printf("I2C read: endTransmission failed (addr=0x%02X, reg=0x%02X)\r\n",
+           TCA9554_ADDRESS, REG);
+    return false;
+  }
+  if (Wire.requestFrom((uint8_t)TCA9554_ADDRESS, (uint8_t)1) != 1) {
+    printf("I2C read: requestFrom failed (addr=0x%02X)\r\n", TCA9554_ADDRESS);
+    return false;
+  }
+  *out = Wire.read();
+  return true;
+}
+
 uint8_t I2C_Read_EXIO(uint8_t REG)
 {
-  Wire.beginTransmission(TCA9554_ADDRESS);                
-  Wire.write(REG);                                        
-  uint8_t result = Wire.endTransmission();               
-  if (result != 0) {                                     
-    printf("Data Transfer Failure !!!\r\n");
-  }
-  Wire.requestFrom((uint8_t)TCA9554_ADDRESS, (uint8_t)1);                   
-  uint8_t bitsStatus = Wire.read();                        
-  return bitsStatus;                                     
+  uint8_t val = 0xFF;
+  I2C_Read_EXIO_safe(REG, &val);
+  return val;
 }
 uint8_t I2C_Write_EXIO(uint8_t REG,uint8_t Data)
 {
@@ -111,12 +148,18 @@ uint8_t I2C_Write_EXIO(uint8_t REG,uint8_t Data)
     printf("Data write failure!!!\r\n");
     return -1;
   }
+  // V4: update shadow registers so reads never touch hardware
+  if (g_board_v4) {
+    if (REG == CH32V003_DIR_REG)    ch32v003_dir_shadow = Data;
+    if (REG == CH32V003_OUTPUT_REG) ch32v003_out_shadow = Data;
+  }
   return 0;                                             
 }
 /********************************************************** Set EXIO mode **********************************************************/       
 void Mode_EXIO(uint8_t Pin,uint8_t State)                 // State: 0=Output, 1=Input (TCA convention; auto-inverts for V4)
 {
-  uint8_t bitsStatus = I2C_Read_EXIO(TCA9554_CONFIG_REG);
+  uint8_t bitsStatus;
+  if (!I2C_Read_EXIO_safe(exio_dir_reg(), &bitsStatus)) return; // bail — don't write garbage
   uint8_t Data;
   // V4 (CH32V003): direction polarity is inverted (1=output, 0=input)
   bool want_input = (State == 1);
@@ -125,7 +168,7 @@ void Mode_EXIO(uint8_t Pin,uint8_t State)                 // State: 0=Output, 1=
     Data = (0x01 << (Pin-1)) | bitsStatus;   // set bit
   else
     Data = (~(0x01 << (Pin-1))) & bitsStatus; // clear bit
-  uint8_t result = I2C_Write_EXIO(TCA9554_CONFIG_REG,Data); 
+  uint8_t result = I2C_Write_EXIO(exio_dir_reg(),Data); 
   if (result != 0) { 
     printf("I/O Configuration Failure !!!\r\n");
   }
@@ -134,7 +177,7 @@ void Mode_EXIOS(uint8_t PinState)                         // PinState in TCA con
 {
   // V4 (CH32V003): direction polarity is inverted (1=output, 0=input)
   uint8_t hw_val = g_board_v4 ? (uint8_t)~PinState : PinState;
-  uint8_t result = I2C_Write_EXIO(TCA9554_CONFIG_REG, hw_val);  
+  uint8_t result = I2C_Write_EXIO(exio_dir_reg(), hw_val);  
   if (result != 0) {   
     printf("I/O Configuration Failure !!!\r\n");
   }
@@ -142,12 +185,13 @@ void Mode_EXIOS(uint8_t PinState)                         // PinState in TCA con
 /********************************************************** Read EXIO status **********************************************************/       
 uint8_t Read_EXIO(uint8_t Pin)
 {
-  uint8_t inputBits = I2C_Read_EXIO(TCA9554_INPUT_REG);          
+  uint8_t inputBits = I2C_Read_EXIO(exio_input_reg());          
   uint8_t bitStatus = (inputBits >> (Pin-1)) & 0x01; 
   return bitStatus;                                  
 }
-uint8_t Read_EXIOS(uint8_t REG = TCA9554_INPUT_REG)
+uint8_t Read_EXIOS(uint8_t REG)
 {
+  if (REG == 0xFF) REG = exio_input_reg();                // default: input register
   uint8_t inputBits = I2C_Read_EXIO(REG);                     
   return inputBits;     
 }
@@ -157,7 +201,8 @@ void Set_EXIO(uint8_t Pin,uint8_t State)                  // Sets the level of P
 {
   uint8_t Data;
   if(State < 2 && Pin < 9 && Pin > 0){  
-    uint8_t bitsStatus = Read_EXIOS(exio_output_reg());
+    uint8_t bitsStatus;
+    if (!I2C_Read_EXIO_safe(exio_output_reg(), &bitsStatus)) return; // bail — don't write garbage
     if(State == 1)                                     
       Data = (0x01 << (Pin-1)) | bitsStatus; 
     else if(State == 0)                  

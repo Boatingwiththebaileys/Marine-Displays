@@ -5,10 +5,9 @@ as a compile-time define:  -DFW_VERSION='"1.0.0-abc1234"'
 Place this at the repo root and add to each platformio.ini:
     extra_scripts = pre:../inject_version.py
 """
-import os
-import subprocess
+import subprocess, os
 
-Import("env")
+Import("env")  # PlatformIO build environment
 
 # Locate version.h next to this script (repo root)
 script_dir = os.path.dirname(os.path.abspath(env.subst("$PROJECT_DIR") + "/../inject_version.py"))
@@ -17,8 +16,8 @@ script_dir = os.path.dirname(os.path.abspath(env.subst("$PROJECT_DIR") + "/../in
 version_base = "0.0.0"
 version_h = os.path.join(script_dir, "version.h")
 if os.path.isfile(version_h):
-    with open(version_h) as file_handle:
-        for line in file_handle:
+    with open(version_h) as f:
+        for line in f:
             if line.strip().startswith("#define FW_VERSION_BASE"):
                 version_base = line.split('"')[1]
                 break
@@ -29,7 +28,7 @@ try:
     git_hash = subprocess.check_output(
         ["git", "rev-parse", "--short", "HEAD"],
         cwd=script_dir,
-        stderr=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL
     ).decode().strip()
 except Exception:
     pass
@@ -41,12 +40,12 @@ try:
     status = subprocess.check_output(
         ["git", "diff", "--shortstat"],
         cwd=script_dir,
-        stderr=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL
     ).decode().strip()
     staged = subprocess.check_output(
         ["git", "diff", "--cached", "--shortstat"],
         cwd=script_dir,
-        stderr=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL
     ).decode().strip()
     if status or staged:
         fw_version += "-dirty"

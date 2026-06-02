@@ -9,7 +9,7 @@
 #define FW_VERSION_BASE "1.0.0"
 
 // FW_VERSION is set by the build script to include the git hash,
-// e.g. "1.0.0-85896d6". If not defined (standalone compile),
+// e.g. "1.0.0-85896d6".  If not defined (standalone compile),
 // fall back to the base version string.
 #ifndef FW_VERSION
 #define FW_VERSION FW_VERSION_BASE

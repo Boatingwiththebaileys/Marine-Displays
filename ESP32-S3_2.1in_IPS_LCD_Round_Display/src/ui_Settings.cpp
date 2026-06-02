@@ -15,6 +15,8 @@ lv_obj_t *ui_SettingsPanel = NULL;
 lv_obj_t *ui_BrightnessSlider = NULL;
 lv_obj_t *ui_BrightnessLabel = NULL;
 lv_obj_t *ui_IPLabel = NULL;
+lv_obj_t *ui_APCredsLabel = NULL;
+lv_obj_t *ui_RSSITitle = NULL;
 lv_obj_t *ui_RSSILabel = NULL;
 lv_obj_t *ui_RSSIBar = NULL;
 lv_obj_t *ui_BackButton = NULL;
@@ -145,19 +147,48 @@ static void buzzer_switch_event_cb(lv_event_t *e)
 // Update IP address and RSSI when screen is shown
 extern "C" void update_ip_address(void)
 {
+    bool connected = (WiFi.status() == WL_CONNECTED);
+    IPAddress apIP = WiFi.softAPIP();
+    bool in_ap_mode = !connected && apIP != INADDR_NONE && apIP != IPAddress(0, 0, 0, 0);
+
     if (ui_IPLabel != NULL) {
-        if (WiFi.status() == WL_CONNECTED) {
+        if (connected) {
             String ip = WiFi.localIP().toString();
             lv_label_set_text(ui_IPLabel, ip.c_str());
             lv_obj_set_style_text_color(ui_IPLabel, lv_color_hex(0x00FF00), 0);
+        } else if (in_ap_mode) {
+            String apStr = "AP: " + apIP.toString();
+            lv_label_set_text(ui_IPLabel, apStr.c_str());
+            lv_obj_set_style_text_color(ui_IPLabel, lv_color_hex(0xFFAA00), 0);
         } else {
             lv_label_set_text(ui_IPLabel, "Not Connected");
             lv_obj_set_style_text_color(ui_IPLabel, lv_color_hex(0x808080), 0);
         }
     }
-    // Update WiFi signal strength bar and label
-    if (ui_RSSIBar != NULL && ui_RSSILabel != NULL) {
-        if (WiFi.status() == WL_CONNECTED) {
+
+    // In AP mode: show SSID/password, hide RSSI. When connected: show RSSI, hide creds.
+    if (ui_APCredsLabel != NULL) {
+        if (in_ap_mode) {
+            lv_label_set_text(ui_APCredsLabel, "SSID: ESP32-RoundDisplay\nPass: 12345678");
+            lv_obj_clear_flag(ui_APCredsLabel, LV_OBJ_FLAG_HIDDEN);
+        } else {
+            lv_obj_add_flag(ui_APCredsLabel, LV_OBJ_FLAG_HIDDEN);
+        }
+    }
+    if (ui_RSSIBar != NULL) {
+        if (in_ap_mode) lv_obj_add_flag(ui_RSSIBar, LV_OBJ_FLAG_HIDDEN);
+        else lv_obj_clear_flag(ui_RSSIBar, LV_OBJ_FLAG_HIDDEN);
+    }
+    if (ui_RSSITitle != NULL) {
+        if (in_ap_mode) lv_obj_add_flag(ui_RSSITitle, LV_OBJ_FLAG_HIDDEN);
+        else lv_obj_clear_flag(ui_RSSITitle, LV_OBJ_FLAG_HIDDEN);
+    }
+    if (ui_RSSILabel != NULL) {
+        if (in_ap_mode) {
+            lv_obj_add_flag(ui_RSSILabel, LV_OBJ_FLAG_HIDDEN);
+        } else {
+            lv_obj_clear_flag(ui_RSSILabel, LV_OBJ_FLAG_HIDDEN);
+            if (connected) {
             int rssi = WiFi.RSSI();
             int pct = constrain(2 * (rssi + 100), 0, 100);
             lv_bar_set_value(ui_RSSIBar, pct, LV_ANIM_ON);
@@ -175,6 +206,7 @@ extern "C" void update_ip_address(void)
             lv_obj_set_style_bg_color(ui_RSSIBar, lv_color_hex(0x808080), LV_PART_INDICATOR);
             lv_label_set_text(ui_RSSILabel, "No Signal");
             lv_obj_set_style_text_color(ui_RSSILabel, lv_color_hex(0x808080), 0);
+        }
         }
     }
 }
@@ -445,14 +477,26 @@ extern "C" void ui_Settings_screen_init(void)
     lv_obj_set_x(ui_IPLabel, 40);
     lv_obj_set_y(ui_IPLabel, -130);
     lv_obj_set_align(ui_IPLabel, LV_ALIGN_CENTER);
+
+    // AP credentials label (shown instead of RSSI when in AP mode)
+    ui_APCredsLabel = lv_label_create(ui_SettingsPanel);
+    lv_label_set_text(ui_APCredsLabel, "SSID: ESP32-RoundDisplay\nPass: 12345678");
+    lv_obj_set_style_text_color(ui_APCredsLabel, lv_color_hex(0xFFAA00), 0);
+    lv_obj_set_style_text_font(ui_APCredsLabel, &lv_font_montserrat_14, 0);
+    lv_obj_set_x(ui_APCredsLabel, 0);
+    lv_obj_set_y(ui_APCredsLabel, -100);
+    lv_obj_set_align(ui_APCredsLabel, LV_ALIGN_CENTER);
+    lv_label_set_long_mode(ui_APCredsLabel, LV_LABEL_LONG_WRAP);
+    lv_obj_set_width(ui_APCredsLabel, 220);
+    lv_obj_add_flag(ui_APCredsLabel, LV_OBJ_FLAG_HIDDEN);
     
     // WiFi Signal Strength row
-    lv_obj_t *rssi_title = lv_label_create(ui_SettingsPanel);
-    lv_label_set_text(rssi_title, "WiFi Signal:");
-    lv_obj_set_style_text_color(rssi_title, lv_color_hex(0xFFFFFF), 0);
-    lv_obj_set_x(rssi_title, -90);
-    lv_obj_set_y(rssi_title, -100);
-    lv_obj_set_align(rssi_title, LV_ALIGN_CENTER);
+    ui_RSSITitle = lv_label_create(ui_SettingsPanel);
+    lv_label_set_text(ui_RSSITitle, "WiFi Signal:");
+    lv_obj_set_style_text_color(ui_RSSITitle, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_x(ui_RSSITitle, -90);
+    lv_obj_set_y(ui_RSSITitle, -100);
+    lv_obj_set_align(ui_RSSITitle, LV_ALIGN_CENTER);
     
     // RSSI bar
     ui_RSSIBar = lv_bar_create(ui_SettingsPanel);

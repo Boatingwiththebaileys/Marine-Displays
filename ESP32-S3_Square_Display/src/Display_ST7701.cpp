@@ -237,15 +237,12 @@ void ST7701_Init()
       uint32_t out_mask = (1 << 1) | (1 << 3) | (1 << 4) | (1 << 5); // EXIO1,3,4,5
       esp_io_expander_set_dir(io_expander, out_mask, IO_EXPANDER_OUTPUT);
       esp_io_expander_set_level(io_expander, out_mask, 1); // all output pins HIGH
-      Serial.println("[DISPLAY] io_expander V4: preserved CH32V003 direction, outputs HIGH");
     } else {
       // V3 (TCA9554): Set PIN6 LOW (buzzer safety) then all pins to output.
       esp_io_expander_set_level(io_expander, (1 << (EXIO_PIN6 - 1)), 0);
       esp_err_t dir_err = esp_io_expander_set_dir(io_expander, 0xFF, IO_EXPANDER_OUTPUT);
       if (dir_err != ESP_OK) {
-        Serial.printf("[DISPLAY] io_expander set_dir all-OUTPUT failed: %s\n", esp_err_to_name(dir_err));
-      } else {
-        Serial.println("[DISPLAY] io_expander direction cache set to all-OUTPUT (PIN6/buzzer safe)");
+        Serial.printf("[DISPLAY] io_expander set_dir failed: %s\n", esp_err_to_name(dir_err));
       }
     }
   }
@@ -267,9 +264,7 @@ void ST7701_Init()
     .flags = {.use_dc_bit = 1, .dc_zero_on_data = 1, .lsb_first = 0, .cs_high_active = 0, .del_keep_cs_inactive = 0},
   };
 
-  ets_printf("*** esp_lcd_new_panel_io_3wire_spi calling ***\r\n");
   esp_err_t rc = esp_lcd_new_panel_io_3wire_spi(&spi_cfg3, &ctrl_io);
-  ets_printf("*** 3wire_spi rc=%d ctrl_io=%p ***\r\n", (int)rc, ctrl_io);
   if (rc != ESP_OK || ctrl_io == NULL) {
     Serial.printf("[DISPLAY] esp_lcd_new_panel_io_3wire_spi failed: %s\n", esp_err_to_name(rc));
     // Fall back to creating RGB panel directly (previous behavior)
@@ -283,7 +278,6 @@ void ST7701_Init()
       return;
     }
   } else {
-    Serial.printf("[DISPLAY] control-panel IO created: %p (expander=%p)\n", ctrl_io, io_expander);
 
     // Prepare minimal device config with vendor config pointing to our rgb_config
     esp_panel_lcd_vendor_config_t vendor_cfg = {};
@@ -306,9 +300,7 @@ void ST7701_Init()
     dev_cfg.bits_per_pixel = ESP_PANEL_LCD_RGB_PIXEL_BITS;
     dev_cfg.color_space = ESP_LCD_COLOR_SPACE_RGB; // Match Arduino demo exactly
 
-    ets_printf("*** esp_lcd_new_panel_st7701_rgb calling ***\r\n");
     rc = esp_lcd_new_panel_st7701_rgb(ctrl_io, &dev_cfg, &panel_handle);
-    ets_printf("*** st7701_rgb rc=%d panel=%p ***\r\n", (int)rc, panel_handle);
     if (rc != ESP_OK || panel_handle == NULL) {
       Serial.printf("[DISPLAY] esp_lcd_new_panel_st7701_rgb failed: %s\n", esp_err_to_name(rc));
       // Clean up ctrl_io
@@ -333,82 +325,37 @@ void ST7701_Init()
       }
       if (ESP_PANEL_LCD_RGB_PIXEL_BITS != 16) Serial.println("[DISPLAY][WARN] rgb_config bits_per_pixel != 16");
     } else {
-      Serial.println("[DISPLAY] esp_lcd_new_panel_st7701_rgb succeeded (vendor init should have run)");
 
       // Quick test: re-create 3-wire control IO so we can explicitly send Sleep-Out and Display-On
       // (Some vendor init paths delete the 3-wire IO; recreate to ensure panel is powered on)
       esp_lcd_panel_io_handle_t ctrl_io_re = NULL;
       esp_err_t rc2 = esp_lcd_new_panel_io_3wire_spi(&spi_cfg3, &ctrl_io_re);
       if (rc2 == ESP_OK && ctrl_io_re != NULL) {
-        Serial.println("[DISPLAY] Recreated control IO to send SLPOUT/DISPON");
-        
         // Configure read timing BEFORE attempting any reads (dummy clocks + settle delay)
         esp_lcd_3wire_set_rx_timing(ctrl_io_re, 8, 100);  // 8 dummy clocks, 100us settle
-        Serial.println("[DISPLAY] Configured 3-wire SPI RX timing: 8 dummy clocks, 100us settle");
         
-        esp_err_t r = esp_lcd_panel_io_tx_param(ctrl_io_re, LCD_CMD_SLPOUT, NULL, 0);
-        Serial.printf("[DISPLAY] Sent SLPOUT -> %s\n", esp_err_to_name(r));
+        esp_lcd_panel_io_tx_param(ctrl_io_re, LCD_CMD_SLPOUT, NULL, 0);
         vTaskDelay(pdMS_TO_TICKS(120));
-        r = esp_lcd_panel_io_tx_param(ctrl_io_re, LCD_CMD_DISPON, NULL, 0);
-        Serial.printf("[DISPLAY] Sent DISPON -> %s\n", esp_err_to_name(r));
+        esp_lcd_panel_io_tx_param(ctrl_io_re, LCD_CMD_DISPON, NULL, 0);
         // Give controller a moment
         vTaskDelay(pdMS_TO_TICKS(50));
 
 // Always attempt to verify controller MADCTL/COLMOD regardless of vendor init path
+        // Attempt to read MADCTL/COLMOD; if not RGB666, patch them
         uint8_t readbuf[2] = {0};
         esp_err_t rr1 = esp_lcd_panel_io_rx_param(ctrl_io_re, LCD_CMD_MADCTL, readbuf, 1);
-        Serial.printf("[DISPLAY] Read MADCTL -> %s, 0x%02x\n", esp_err_to_name(rr1), (unsigned)readbuf[0]);
         esp_err_t rr2 = esp_lcd_panel_io_rx_param(ctrl_io_re, LCD_CMD_COLMOD, readbuf + 1, 1);
-        Serial.printf("[DISPLAY] Read COLMOD -> %s, 0x%02x\n", esp_err_to_name(rr2), (unsigned)readbuf[1]);
 
-        // If readbacks failed or COLMOD is not RGB666 (0x60), attempt to patch controller via control IO
-        bool need_fix = false;
-        if (rr1 != ESP_OK) {
-          Serial.println("[DISPLAY][WARN] MADCTL read failed (attempting to set expected values)");
-          need_fix = true;
-        }
-        if (rr2 != ESP_OK || readbuf[1] != 0x60) {
-          Serial.printf("[DISPLAY][WARN] COLMOD read unexpected or failed (value=0x%02x)\n", (unsigned)readbuf[1]);
-          need_fix = true;
-        }
-
-        if (need_fix) {
-          Serial.println("[DISPLAY] Attempting to set MADCTL=0x60 (rotation) and COLMOD=0x60 (RGB666)");
-          uint8_t madctl = 0x60;  // Trying alternate rotation value
-          esp_err_t wr1 = esp_lcd_panel_io_tx_param(ctrl_io_re, LCD_CMD_MADCTL, &madctl, 1);
-          Serial.printf("[DISPLAY] Wrote MADCTL -> %s\n", esp_err_to_name(wr1));
+        if (rr1 != ESP_OK || rr2 != ESP_OK || readbuf[1] != 0x60) {
+          uint8_t madctl = 0x60;
+          esp_lcd_panel_io_tx_param(ctrl_io_re, LCD_CMD_MADCTL, &madctl, 1);
           uint8_t colmod = 0x60;
-          esp_err_t wr2 = esp_lcd_panel_io_tx_param(ctrl_io_re, LCD_CMD_COLMOD, &colmod, 1);
-          Serial.printf("[DISPLAY] Wrote COLMOD -> %s\n", esp_err_to_name(wr2));
-          // Give the controller time to process and then re-read
+          esp_lcd_panel_io_tx_param(ctrl_io_re, LCD_CMD_COLMOD, &colmod, 1);
           vTaskDelay(pdMS_TO_TICKS(20));
-          esp_err_t rr1b = esp_lcd_panel_io_rx_param(ctrl_io_re, LCD_CMD_MADCTL, readbuf, 1);
-          esp_err_t rr2b = esp_lcd_panel_io_rx_param(ctrl_io_re, LCD_CMD_COLMOD, readbuf + 1, 1);
-          Serial.printf("[DISPLAY] After fix: MADCTL -> %s, 0x%02x; COLMOD -> %s, 0x%02x\n", esp_err_to_name(rr1b), (unsigned)readbuf[0], esp_err_to_name(rr2b), (unsigned)readbuf[1]);
         }
 
-        // Keep the control IO persistent for fallback commands (do not delete immediately)
+        // Keep the control IO persistent for fallback commands
         g_persistent_ctrl_io = ctrl_io_re;
-        Serial.println("[DISPLAY] Control IO retained for fallback commands");
-
-        // Verify vendor_cfg/dev_cfg/rgb_config consistency now that panel is created via vendor init
-        Serial.println("[DISPLAY] Verifying vendor-aware panel config & mapping...");
-        Serial.printf("[DISPLAY] dev_cfg.color_space=%d bits_per_pixel=%d\n", (int)dev_cfg.color_space, (int)dev_cfg.bits_per_pixel);
-        if (vendor_cfg.rgb_config) {
-          Serial.printf("[DISPLAY] vendor rgb_config bits_per_pixel (compile-time)=%d\n", (int)ESP_PANEL_LCD_RGB_PIXEL_BITS);
-          Serial.print("[DISPLAY] vendor data_gpio_nums: ");
-          for (int _i=0; _i<16; _i++) {
-            Serial.printf("%d%s", vendor_cfg.rgb_config->data_gpio_nums[_i], _i==15 ? "\n" : ", ");
-          }
-          if (ESP_PANEL_LCD_RGB_PIXEL_BITS != 16) Serial.println("[DISPLAY][WARN] vendor rgb_config bits_per_pixel != 16");
-        } else {
-          Serial.println("[DISPLAY][WARN] vendor_cfg.rgb_config is NULL");
-        }
-        if (dev_cfg.color_space != ESP_LCD_COLOR_SPACE_RGB || ESP_PANEL_LCD_RGB_PIXEL_BITS != 16) {
-          Serial.println("[DISPLAY][WARN] Expected RGB element order + 16bpp; double-check endianness / swaps in drivers & LVGL configuration");
-        } else {
-          Serial.println("[DISPLAY] Vendor-aware panel config looks consistent with little-endian RGB565 pipeline");
-        }
 
 #if !REMOVE_PANEL_TESTS
         // Start RX timing sweep in the background to avoid blocking init. This sweep is guarded
@@ -418,7 +365,7 @@ void ST7701_Init()
           if (xrc != pdPASS) Serial.printf("[SWEEP] Failed to create rx_sweep task: %d\n", (int)xrc);
         }
 #else
-        Serial.println("[SWEEP] Panel tests disabled; skipping RX timing sweep at boot");
+        // Panel tests disabled
 #endif
 
       } else {
@@ -622,10 +569,15 @@ static void LCD_FillSolid(uint16_t color565)
 }
 
 void LCD_Init() {
-  // Ensure expander-controlled backlight is off briefly to emulate a power-cycle
-  Mode_EXIO(EXIO_PIN2, 0); // ensure BL pin is output
-  Set_EXIO(EXIO_PIN2, Low);
-  vTaskDelay(pdMS_TO_TICKS(50));
+  // Ensure expander-controlled backlight is off briefly to emulate a power-cycle.
+  // EXIO_PIN2 = bit1: on v3 this is the BL pin; on v4 bit1 = TP_RST (GT911 reset).
+  // Only do this on v3 — touching it on v4 puts GT911 into hardware reset and
+  // corrupts the CH32V003 shadow register before Touch_Init runs.
+  if (!is_board_v4()) {
+    Mode_EXIO(EXIO_PIN2, 0); // ensure BL pin is output
+    Set_EXIO(EXIO_PIN2, Low);
+    vTaskDelay(pdMS_TO_TICKS(50));
+  }
 
   ST7701_Reset();
   ST7701_Init();
@@ -707,9 +659,9 @@ void Set_Backlight(uint8_t Light)
     ledc_update_duty(LEDC_LOW_SPEED_MODE, (ledc_channel_t)PWM_Channel);
   }
   if (is_board_v4()) {
-    // V4: CH32V003 PWM register, inverted (0=full bright, 247=off).
-    // Map Light 0-100 → PWM 247-0.
-    uint8_t pwm = (Light == 0) ? 247 : (uint8_t)((uint32_t)(100 - Light) * 247 / 100);
+    // V4: CH32V003 PWM register, inverted (0=full bright, 255=off).
+    // Map Light 0-100 → PWM 255-0.
+    uint8_t pwm = (Light == 0) ? 255 : (uint8_t)((uint32_t)(100 - Light) * 255 / 100);
     backlight_set_pwm(pwm);
   } else {
     // V3: BL_EN power gate on EXIO2.

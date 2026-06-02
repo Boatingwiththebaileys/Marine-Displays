@@ -1,0 +1,14 @@
+{
+	"folders": [
+		{
+			"name": "ESP32-S3_Square_Display",
+			"path": "."
+		}
+	],
+	"settings": {
+		"terminal.integrated.scrollback": 10000,
+		"chat.tools.terminal.autoApprove": {
+			"~/.platformio/penv/bin/pio": true
+		}
+	}
+}

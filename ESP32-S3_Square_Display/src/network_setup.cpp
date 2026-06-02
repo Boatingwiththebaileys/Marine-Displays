@@ -1,6 +1,7 @@
 // ...existing code...
 
 #include "gauge_config.h"
+#include "version.h"
 #include <Arduino.h>
 #include <WiFi.h>
 #include <WebServer.h>
@@ -49,25 +50,8 @@ extern "C" void show_fallback_error_screen_if_needed() {
             }
         }
     }
-    if (all_default && !g_error_screen_active) {
-        Serial.println("[ERROR] All screen configs are default/blank. Showing fallback error screen.");
-        g_error_screen_active = true;
-        #ifdef LVGL_H
-        // Do NOT call lv_obj_clean() — that frees the global UI object pointers
-        // (ui_TopIcon1, ui_Needle, etc.) while loop() continues to use them,
-        // causing dangling-pointer PSRAM heap corruption.
-        // Create an opaque overlay instead so existing objects stay valid.
-        lv_obj_t *scr = lv_scr_act();
-        lv_obj_t *overlay = lv_obj_create(scr);
-        lv_obj_set_size(overlay, LV_HOR_RES, LV_VER_RES);
-        lv_obj_set_style_bg_color(overlay, lv_color_black(), LV_PART_MAIN);
-        lv_obj_set_style_bg_opa(overlay, LV_OPA_COVER, LV_PART_MAIN);
-        lv_obj_set_style_border_width(overlay, 0, LV_PART_MAIN);
-        lv_obj_align(overlay, LV_ALIGN_CENTER, 0, 0);
-        lv_obj_t *label = lv_label_create(overlay);
-        lv_label_set_text(label, "ERROR: No valid config loaded.\nCheck SD card or NVS.\n\nConnect to WiFi AP:\nESP32-SquareDisplay\nThen open 192.168.4.1");
-        lv_obj_align(label, LV_ALIGN_CENTER, 0, 0);
-        #endif
+    if (all_default) {
+        Serial.println("[WARN] No valid config loaded. Keeping default UI (logo/settings) so setup remains accessible.");
     }
 }
 
@@ -821,10 +805,10 @@ void handle_gauges_page() {
     // Test mode toggle — AJAX, no full page reload
     html += "<div style='margin-bottom:16px;text-align:center;'>";
     html += "<button type='button' id='testModeBtn' onclick='toggleTestMode()' style='padding:8px 16px;font-size:1em;'>";
-    html += (test_mode ? "Disable Setup Mode" : "Enable Setup Mode");
+    html += (test_mode ? "Disable Test Mode" : "Enable Test Mode");
     html += "</button> ";
     html += "<span id='testModeLabel' style='font-weight:bold;color:";
-    html += (test_mode ? "#388e3c;'>SETUP MODE ON" : "#b71c1c;'>SETUP MODE OFF");
+    html += (test_mode ? "#388e3c;'>TEST MODE ON" : "#b71c1c;'>TEST MODE OFF");
     html += "</span></div>";
     // Form wrapper — screen content is injected inside via AJAX
     html += "<form id='calibrationForm' method='POST' action='/save-gauges' accept-charset='utf-8'>";
@@ -944,13 +928,18 @@ void handle_gauges_page() {
     html += "    var btn=document.getElementById('testModeBtn');\n";
     html += "    var lbl=document.getElementById('testModeLabel');\n";
     html += "    if(j.test_mode){\n";
-    html += "      if(btn)btn.textContent='Disable Setup Mode';\n";
-    html += "      if(lbl){lbl.style.color='#388e3c';lbl.textContent='SETUP MODE ON';}\n";
+    html += "      if(btn)btn.textContent='Disable Test Mode';\n";
+    html += "      if(lbl){lbl.style.color='#388e3c';lbl.textContent='TEST MODE ON';}\n";
     html += "    } else {\n";
-    html += "      if(btn)btn.textContent='Enable Setup Mode';\n";
-    html += "      if(lbl){lbl.style.color='#b71c1c';lbl.textContent='SETUP MODE OFF';}\n";
+    html += "      if(btn)btn.textContent='Enable Test Mode';\n";
+    html += "      if(lbl){lbl.style.color='#b71c1c';lbl.textContent='TEST MODE OFF';}\n";
     html += "    }\n";
-    html += "    var prev=currentTab; currentTab=-1; showScreenTab(prev>=0?prev:0);\n";
+    html += "    var testBtns=document.querySelectorAll('button[onclick^=\"testGaugePoint\"]');\n";
+    html += "    for(var i=0;i<testBtns.length;i++){\n";
+    html += "      testBtns[i].disabled = !j.test_mode;\n";
+    html += "      testBtns[i].style.backgroundColor = j.test_mode ? '#4a90e2' : '#cccccc';\n";
+    html += "      testBtns[i].style.cursor = j.test_mode ? 'pointer' : 'not-allowed';\n";
+    html += "    }\n";
     html += "  }).catch(function(e){console.error(e);});\n";
     html += "}\n";
 
@@ -1674,10 +1663,15 @@ void handle_save_gauges() {
                         }
                     };
                     
-                    saveQuadrant("tl", screen_configs[s].quad_tl_path, screen_configs[s].quad_tl_font_size, screen_configs[s].quad_tl_font_color);
-                    saveQuadrant("tr", screen_configs[s].quad_tr_path, screen_configs[s].quad_tr_font_size, screen_configs[s].quad_tr_font_color);
-                    saveQuadrant("bl", screen_configs[s].quad_bl_path, screen_configs[s].quad_bl_font_size, screen_configs[s].quad_bl_font_color);
-                    saveQuadrant("br", screen_configs[s].quad_br_path, screen_configs[s].quad_br_font_size, screen_configs[s].quad_br_font_color);
+                    // Hidden quad form fields are still submitted for non-quad screens.
+                    // Restrict these writes to Quad screens so Compass BL/BR extras are
+                    // not overwritten by stale quad_* POST values.
+                    if (screen_configs[s].display_type == DISPLAY_TYPE_QUAD) {
+                        saveQuadrant("tl", screen_configs[s].quad_tl_path, screen_configs[s].quad_tl_font_size, screen_configs[s].quad_tl_font_color);
+                        saveQuadrant("tr", screen_configs[s].quad_tr_path, screen_configs[s].quad_tr_font_size, screen_configs[s].quad_tr_font_color);
+                        saveQuadrant("bl", screen_configs[s].quad_bl_path, screen_configs[s].quad_bl_font_size, screen_configs[s].quad_bl_font_color);
+                        saveQuadrant("br", screen_configs[s].quad_br_path, screen_configs[s].quad_br_font_size, screen_configs[s].quad_br_font_color);
+                    }
                     
                     // Save gauge+number display settings
                     String gaugeNumCenterPathKey = "gauge_num_center_path_" + String(s);
@@ -2031,6 +2025,7 @@ void handle_root() {
     html += "<button class='tab-btn' onclick=\"location.href='/device'\">Device Settings</button>";
     html += "<button class='tab-btn' onclick=\"location.href='/update'\">Firmware Update</button>";
     html += "</div>"; // root-actions
+    html += "<div style='text-align:center;margin-top:18px;font-size:0.8em;color:#888;'>Firmware: " + String(FW_VERSION) + "</div>";
     html += "</div>"; // tab-content
     html += "</div></body></html>";
     config_server.send(200, "text/html", html);
@@ -2193,13 +2188,38 @@ void handle_device_page() {
     html += "<option value='10'" + String(screen_off_timeout_min==10?" selected":"") + ">10 min</option>";
     html += "<option value='30'" + String(screen_off_timeout_min==30?" selected":"") + ">30 min</option>";
     html += "</select></div>";
-    // Brightness
-    html += "<div class='form-row'><label>Brightness:</label><select name='brightness_lv'>";
-    html += "<option value='0'" + String(brightness_level==0?" selected":"") + ">Normal</option>";
-    html += "<option value='1'" + String(brightness_level==1?" selected":"") + ">Dim</option>";
-    html += "<option value='2'" + String(brightness_level==2?" selected":"") + ">Night</option>";
-    html += "<option value='3'" + String(brightness_level==3?" selected":"") + ">Night+</option>";
-    html += "</select></div>";
+    // Brightness — V4: unified slider (10-200, with red mode below 110), V3: 4-step slider
+    if (is_board_v4()) {
+        html += "<div class='form-row'><label>Brightness:</label>";
+        html += "<input type='range' name='brightness_lv' min='10' max='200' value='" + String(brightness_level) + "'";
+        html += " oninput='var v=parseInt(this.value),s=this.nextElementSibling;";
+        html += "if(v>=110){var f=(v-110)/90;var p=Math.round(10+f*f*90);s.textContent=p+\"%\";s.style.color=\"#111\";}";
+        html += "else{var f=(v-10)/99;var p=Math.round(10+f*f*90);s.textContent=\"R:\"+p+\"%\";s.style.color=\"#f44\";}' style='width:120px;vertical-align:middle;'>";
+        {
+            float frac;
+            int pwm;
+            if (brightness_level >= 110) {
+                frac = (float)(brightness_level - 110) / 90.0f;
+            } else {
+                frac = (float)(brightness_level - 10) / 99.0f;
+            }
+            pwm = 10 + (int)(frac * frac * 90.0f);
+            if (brightness_level >= 110) {
+                html += "<span style='margin-left:8px;color:#111;'>" + String(pwm) + "%</span>";
+            } else {
+                html += "<span style='margin-left:8px;color:#f44;'>R:" + String(pwm) + "%</span>";
+            }
+        }
+        html += "</div>";
+    } else {
+        static const char *blabels[] = {"Normal", "Dim", "Night", "Night+"};
+        html += "<div class='form-row'><label>Brightness:</label>";
+        html += "<input type='range' name='brightness_lv' min='0' max='3' value='" + String(brightness_level) + "'";
+        html += " oninput='this.nextElementSibling.textContent=[\"Normal\",\"Dim\",\"Night\",\"Night+\"][this.value]'";
+        html += " style='width:120px;vertical-align:middle;'>";
+        html += "<span style='margin-left:8px;color:#fff;'>" + String(blabels[brightness_level < 4 ? brightness_level : 0]) + "</span>";
+        html += "</div>";
+    }
     // Unit system
     html += "<div class='form-row'><label>Units:</label><select name='unit_system'>";
     html += "<option value='0'" + String(unit_system==UNIT_METRIC?" selected":"") + ">Metric</option>";
@@ -2258,7 +2278,14 @@ void handle_save_device() {
 
         // Brightness level
         uint8_t bl = (uint8_t)config_server.arg("brightness_lv").toInt();
-        if (bl > 3) bl = 0;
+        if (is_board_v4()) {
+            int bl_raw = config_server.arg("brightness_lv").toInt();
+            if (bl_raw > 200) bl_raw = 200;
+            if (bl_raw < 10) bl_raw = 10;
+            bl = (uint8_t)bl_raw;
+        } else {
+            if (bl > 3) bl = 0;
+        }
         set_brightness_level(bl);
 
         // Unit system
@@ -2392,8 +2419,10 @@ void setup_network() {
         // Silence buzzer during WiFi wait — setup() may have left BEE_EN/PIN6
         // HIGH if the I2C expander direction write failed after a crash-reboot.
         if (is_board_v4()) {
-            Set_EXIOS(Read_EXIOS(exio_output_reg()) & (uint8_t)~(1 << (PIN_BEE_EN - 1)));
-            Mode_EXIO(PIN_BEE_EN, 1);
+            uint8_t cur_dir;
+            if (I2C_Read_EXIO_safe(exio_dir_reg(), &cur_dir) && cur_dir != CH32V003_DIR_SAFE) {
+                I2C_Write_EXIO(exio_dir_reg(), CH32V003_DIR_SAFE);
+            }
         } else {
             Set_EXIOS(Read_EXIOS(exio_output_reg()) & (uint8_t)~(1 << (EXIO_PIN6 - 1)));
             Mode_EXIOS(0x00);

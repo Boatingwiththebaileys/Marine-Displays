@@ -8,6 +8,8 @@
 #include <esp_system.h>
 #include <map>
 
+extern "C" int ui_get_current_screen(void);
+
 // Extended sensor storage for paths beyond the 10 gauge slots
 static std::map<String, float> extended_sensor_values;
 static std::map<String, String> extended_sensor_units;
@@ -47,6 +49,7 @@ static const unsigned long RECONNECT_BASE_MS = 2000;
 static const unsigned long RECONNECT_MAX_MS = 60000;
 static const unsigned long MESSAGE_TIMEOUT_MS = 30000; // 30s without messages => reconnect
 static const unsigned long PING_INTERVAL_MS = 15000; // send periodic ping
+static const int SK_SUBSCRIBE_PERIOD_MS = 200; // request 5Hz updates from server
 
 // Outgoing message queue (simple ring buffer)
 static SemaphoreHandle_t ws_queue_mutex = NULL;
@@ -180,29 +183,39 @@ static void wsEvent(WStype_t type, uint8_t * payload, size_t length) {
         last_message_time = millis();
         // reset backoff on successful connect
         current_backoff_ms = RECONNECT_BASE_MS;
-        // Build subscription JSON
-        DynamicJsonDocument subdoc(1024);
-        subdoc["context"] = "vessels.self";
-        JsonArray subs = subdoc.createNestedArray("subscribe");
-        for (int i = 0; i < TOTAL_PARAMS; i++) {
+
+        // Subscribe ONLY to the active screen's paths
+        int active_scr = ui_get_current_screen();
+        if (active_scr < 1) active_scr = 1;
+        int idx = active_scr - 1;
+        int base = idx * PARAMS_PER_SCREEN;
+
+        String out = "{\"context\":\"vessels.self\",\"subscribe\":[";
+        bool first = true;
+        for (int i = base; i < base + PARAMS_PER_SCREEN && i < TOTAL_PARAMS; i++) {
             if (signalk_paths[i].length() > 0) {
-                JsonObject s = subs.createNestedObject();
-                s["path"] = signalk_paths[i];
-                s["period"] = 0; // instant updates (server may push immediately)
+                if (!first) out += ",";
+                out += "{\"path\":\"";
+                out += signalk_paths[i];
+                out += "\",\"period\":";
+                out += String(SK_SUBSCRIBE_PERIOD_MS);
+                out += "}";
+                first = false;
             }
         }
-        // Also subscribe to gauge_num_center_path for each screen
-        for (int s = 0; s < NUM_SCREENS; s++) {
-            if (screen_configs[s].display_type == DISPLAY_TYPE_GAUGE_NUMBER &&
-                strlen(screen_configs[s].gauge_num_center_path) > 0) {
-                JsonObject sub = subs.createNestedObject();
-                sub["path"] = screen_configs[s].gauge_num_center_path;
-                sub["period"] = 0;
-            }
+        // Also include gauge_num_center_path if this screen uses it
+        if (screen_configs[idx].display_type == DISPLAY_TYPE_GAUGE_NUMBER &&
+            strlen(screen_configs[idx].gauge_num_center_path) > 0) {
+            if (!first) out += ",";
+            out += "{\"path\":\"";
+            out += screen_configs[idx].gauge_num_center_path;
+            out += "\",\"period\":";
+            out += String(SK_SUBSCRIBE_PERIOD_MS);
+            out += "}";
         }
-        String out;
-        serializeJson(subdoc, out);
+        out += "]}";
         ws_client.sendTXT(out);
+        Serial.printf("[SK] Subscribed to screen %d paths on connect\n", active_scr);
         // flush any queued outgoing messages (resubscribe, etc)
         flush_outgoing();
         return;
@@ -306,7 +319,7 @@ static void signalk_task(void *parameter) {
             if (now >= next_reconnect_at) {
                 Serial.println("Signal K: attempting reconnect...");
                 // re-init client
-                ws_client.begin(server_ip_str.c_str(), server_port_num, "/signalk/v1/stream");
+                ws_client.begin(server_ip_str.c_str(), server_port_num, "/signalk/v1/stream?subscribe=none");
                 ws_client.onEvent(wsEvent);
                 last_reconnect_attempt = now;
                 // schedule next if this fails
@@ -358,7 +371,8 @@ void enable_signalk(const char* ssid, const char* password, const char* server_i
     Serial.println("Signal K: Starting WebSocket client...");
 
     // Initialize websocket client
-    ws_client.begin(server_ip_str.c_str(), server_port_num, "/signalk/v1/stream");
+    // subscribe=none prevents server from firehosing all data on connect
+    ws_client.begin(server_ip_str.c_str(), server_port_num, "/signalk/v1/stream?subscribe=none");
     ws_client.onEvent(wsEvent);
     // We'll manage reconnection with backoff ourselves
     ws_client.setReconnectInterval(0);
@@ -389,6 +403,55 @@ void disable_signalk() {
     Serial.println("Signal K disabled (WebSocket disconnected)");
 }
 
+// Subscribe to only the active screen's SignalK paths.
+// Sends an unsubscribe-all first, then subscribes to only the needed paths.
+void subscribe_to_active_screen(int screen_1based) {
+    if (screen_1based < 1) screen_1based = 1;
+    int idx = screen_1based - 1;
+    int base = idx * PARAMS_PER_SCREEN;
+
+    // Unsubscribe from everything first
+    String unsub = "{\"context\":\"vessels.self\",\"unsubscribe\":[{\"path\":\"*\"}]}";
+
+    // Build subscribe for only this screen's paths
+    String out = "{\"context\":\"vessels.self\",\"subscribe\":[";
+    bool first = true;
+    for (int i = base; i < base + PARAMS_PER_SCREEN && i < TOTAL_PARAMS; i++) {
+        if (signalk_paths[i].length() > 0) {
+            if (!first) out += ",";
+            out += "{\"path\":\"";
+            out += signalk_paths[i];
+            out += "\",\"period\":";
+            out += String(SK_SUBSCRIBE_PERIOD_MS);
+            out += "}";
+            first = false;
+        }
+    }
+    // Also include gauge_num_center_path if this screen uses it
+    if (idx < NUM_SCREENS &&
+        screen_configs[idx].display_type == DISPLAY_TYPE_GAUGE_NUMBER &&
+        strlen(screen_configs[idx].gauge_num_center_path) > 0) {
+        if (!first) out += ",";
+        out += "{\"path\":\"";
+        out += screen_configs[idx].gauge_num_center_path;
+        out += "\",\"period\":";
+        out += String(SK_SUBSCRIBE_PERIOD_MS);
+        out += "}";
+    }
+    out += "]}";
+
+    if (ws_client.isConnected()) {
+        ws_client.sendTXT(unsub);
+        ws_client.sendTXT(out);
+        Serial.printf("[SK] Subscribed to %d paths for screen %d\n",
+                      PARAMS_PER_SCREEN, screen_1based);
+    } else {
+        enqueue_outgoing(unsub);
+        enqueue_outgoing(out);
+        Serial.printf("[SK] Queued subscription for screen %d (WS not connected)\n", screen_1based);
+    }
+}
+
 // Rebuild the subscription list from current configuration and (re)send it
 // over the active WebSocket connection if connected. If the WS is not
 // connected, the updated paths will be used when connection is (re)established.
@@ -399,40 +462,8 @@ void refresh_signalk_subscriptions() {
         Serial.printf("[SignalK] refreshed path[%d] = '%s'\n", i, signalk_paths[i].c_str());
     }
 
-    // Build subscription JSON (we build regardless so we can queue it if needed)
-    DynamicJsonDocument subdoc(1024);
-    subdoc["context"] = "vessels.self";
-    JsonArray subs = subdoc.createNestedArray("subscribe");
-    for (int i = 0; i < TOTAL_PARAMS; i++) {
-        if (signalk_paths[i].length() > 0) {
-            JsonObject s = subs.createNestedObject();
-            s["path"] = signalk_paths[i];
-            s["period"] = 0;
-        }
-    }
-    // Also subscribe to gauge_num_center_path for each screen
-    for (int s = 0; s < NUM_SCREENS; s++) {
-        if (screen_configs[s].display_type == DISPLAY_TYPE_GAUGE_NUMBER &&
-            strlen(screen_configs[s].gauge_num_center_path) > 0) {
-            JsonObject sub = subs.createNestedObject();
-            sub["path"] = screen_configs[s].gauge_num_center_path;
-            sub["period"] = 0;
-        }
-    }
-    String out;
-    serializeJson(subdoc, out);
-
-    // If connected, send; otherwise queue for later flush
-    if (ws_client.isConnected()) {
-        ws_client.sendTXT(out);
-        Serial.println("[SignalK] Sent refreshed subscription payload");
-    } else {
-        if (enqueue_outgoing(out)) {
-            Serial.println("[SignalK] WS not connected - subscription payload queued");
-        } else {
-            Serial.println("[SignalK] WS not connected - failed to queue subscription payload");
-        }
-    }
+    // Re-subscribe to only the active screen
+    subscribe_to_active_screen(ui_get_current_screen());
 }
 
 

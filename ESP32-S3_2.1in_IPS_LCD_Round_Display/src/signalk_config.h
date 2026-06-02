@@ -63,6 +63,9 @@ void disable_signalk();
 // Rebuild and (re)send Signal K subscription list from current configuration
 void refresh_signalk_subscriptions();
 
+// Subscribe to only the active screen's SignalK paths (unsubscribes from all first)
+void subscribe_to_active_screen(int screen_1based);
+
 // Enqueue an outgoing message to be sent when WS is connected
 void enqueue_signalk_message(const String &msg);
 // Convert value to angle based on parameter type and position

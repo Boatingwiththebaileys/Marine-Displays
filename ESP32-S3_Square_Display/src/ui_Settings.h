@@ -9,6 +9,7 @@ extern lv_obj_t *ui_SettingsPanel;
 extern lv_obj_t *ui_BrightnessSlider;
 extern lv_obj_t *ui_BrightnessLabel;
 extern lv_obj_t *ui_IPLabel;
+extern lv_obj_t *ui_APCredsLabel;
 extern lv_obj_t *ui_RSSILabel;
 extern lv_obj_t *ui_RSSIBar;
 extern lv_obj_t *ui_BackButton;
@@ -31,6 +32,7 @@ void update_ip_address(void);
 void trigger_buzzer_alert(void);
 void night_mode_init_overlays(void);
 void set_brightness_level(uint8_t level);
+void brightness_nvs_flush(void);
 
 #ifdef __cplusplus
 }

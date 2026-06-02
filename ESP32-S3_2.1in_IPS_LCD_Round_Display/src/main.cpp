@@ -16,6 +16,7 @@ bool test_mode = false;
 #include "needle_style.h"
 #include "gauge_number_display.h"
 #include "unit_convert.h"
+#include "version.h"
 
 // Apply saved screen visuals (backgrounds, icons, display type) after ui_init()
 extern bool apply_all_screen_visuals();
@@ -170,7 +171,7 @@ static void animate_generic_needle(lv_obj_t* needle, int16_t &last_angle, int16_
     lv_anim_set_var(&a, needle);
     lv_anim_set_exec_cb(&a, is_lower ? lower_needle_anim_cb : needle_anim_cb);
     lv_anim_set_values(&a, last_angle, new_angle);
-    lv_anim_set_time(&a, 500);
+    lv_anim_set_time(&a, 200);
     lv_anim_set_path_cb(&a, lv_anim_path_linear);
     lv_anim_start(&a);
 
@@ -410,7 +411,8 @@ void setup() {
     Serial.begin(115200);
     delay(500);
     
-    Serial.println("\n\n=== ESP32 Round Display Starting ===");
+    Serial.println("\n\n=== ESP32 2.1in Round Display Starting ===");
+    Serial.printf("Firmware version: %s\n", FW_VERSION);
     Serial.flush();
     
     // I2C and IO expander
@@ -438,9 +440,6 @@ void setup() {
     // are available during screen construction.
     load_preferences();
 
-    // Show fallback error screen if all configs are blank
-    show_fallback_error_screen_if_needed();
-
     // LVGL
     Lvgl_Init();
 
@@ -452,6 +451,9 @@ void setup() {
     ui_init();  // Load SquareLine UI
     Serial.println("LVGL and UI initialized");
     Serial.flush();
+
+    // Show fallback error screen if all configs are blank (must be after LVGL + UI init)
+    show_fallback_error_screen_if_needed();
     
     // Apply persisted needle styles (colors, widths, lengths, pivot)
     apply_all_needle_styles();
@@ -576,6 +578,9 @@ void loop() {
                 if (top_needle) needle_anim_cb(top_needle, last_top_angle[current_screen]);
                 if (bottom_needle) lower_needle_anim_cb(bottom_needle, last_bottom_angle[current_screen]);
                 last_seen_screen = current_screen;
+
+                // Re-subscribe to only the new screen's SignalK paths
+                subscribe_to_active_screen(current_screen);
             }
 
             update_needles_for_screen(current_screen);
