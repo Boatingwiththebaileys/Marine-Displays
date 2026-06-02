@@ -58,6 +58,12 @@ static lv_obj_t*   a_sog_lbl[NUM_SCREENS]   = {};
 static lv_obj_t*   a_cog_lbl[NUM_SCREENS]   = {};
 static lv_obj_t*   a_tgt_lbl[NUM_SCREENS]   = {};
 
+// ─── Redraw rate-limit state (module scope so create() can reset them) ────────
+static unsigned long a_last_redraw[NUM_SCREENS]    = {};
+static float         a_prev_cog[NUM_SCREENS]       = {NAN,NAN,NAN,NAN,NAN};
+static float         a_prev_sog[NUM_SCREENS]       = {NAN,NAN,NAN,NAN,NAN};
+static int           a_prev_tgt_count[NUM_SCREENS] = {};
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 static lv_obj_t* screen_obj(int n) {
     switch (n) {
@@ -199,6 +205,13 @@ void ais_display_create(int n) {
     make_label(a_cog_lbl[n],   "COG ---", grey,  LV_ALIGN_BOTTOM_LEFT,  8, -28);
     make_label(a_sog_lbl[n],   "SOG ---", grey,  LV_ALIGN_BOTTOM_LEFT,  8,  -8);
 
+    // Force a full redraw on the next update call — prevents rings from
+    // staying missing after a destroy+create cycle (visual apply after save).
+    a_last_redraw[n]    = 0;
+    a_prev_cog[n]       = NAN;
+    a_prev_sog[n]       = NAN;
+    a_prev_tgt_count[n] = -1;
+
     Serial.printf("[AIS] Display created on screen %d\n", n);
 }
 
@@ -210,21 +223,19 @@ void ais_display_update(int n, float own_lat, float own_lon,
 
     // Rate-limit canvas redraws — AIS data only updates every 5 s.
     // Also skip if nothing changed to avoid flicker.
-    static unsigned long last_redraw[NUM_SCREENS] = {};
-    static float prev_cog[NUM_SCREENS] = {NAN,NAN,NAN,NAN,NAN};
-    static float prev_sog[NUM_SCREENS] = {NAN,NAN,NAN,NAN,NAN};
-    static int   prev_tgt_count[NUM_SCREENS] = {};
+    // NOTE: a_last_redraw / a_prev_* are module-scope so ais_display_create()
+    // can reset them to force a redraw after a destroy+create cycle.
     unsigned long now = millis();
-    bool data_changed = (g_ais_target_count != prev_tgt_count[n])
-                     || (isnan(own_cog) != isnan(prev_cog[n]))
-                     || (!isnan(own_cog) && fabsf(own_cog - prev_cog[n]) > 0.5f)
-                     || (isnan(own_sog) != isnan(prev_sog[n]))
-                     || (!isnan(own_sog) && fabsf(own_sog - prev_sog[n]) > 0.05f);
-    if (!data_changed && (now - last_redraw[n] < 2000)) return;
-    last_redraw[n] = now;
-    prev_cog[n] = own_cog;
-    prev_sog[n] = own_sog;
-    prev_tgt_count[n] = g_ais_target_count;
+    bool data_changed = (g_ais_target_count != a_prev_tgt_count[n])
+                     || (isnan(own_cog) != isnan(a_prev_cog[n]))
+                     || (!isnan(own_cog) && fabsf(own_cog - a_prev_cog[n]) > 0.5f)
+                     || (isnan(own_sog) != isnan(a_prev_sog[n]))
+                     || (!isnan(own_sog) && fabsf(own_sog - a_prev_sog[n]) > 0.05f);
+    if (!data_changed && (now - a_last_redraw[n] < 2000)) return;
+    a_last_redraw[n]    = now;
+    a_prev_cog[n]       = own_cog;
+    a_prev_sog[n]       = own_sog;
+    a_prev_tgt_count[n] = g_ais_target_count;
 
     // Range from config (repurpose graph_time_range field)
     uint8_t range_idx = screen_configs[n].graph_time_range;

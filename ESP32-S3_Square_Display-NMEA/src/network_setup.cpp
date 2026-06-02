@@ -2200,13 +2200,19 @@ void handle_save_gauges() {
                 Serial.flush();
             }
         }
-        // Verify SD is still mounted; attempt remount if needed
+        // Verify SD is still mounted; attempt remount if needed.
+        // Once a remount fails, skip all future attempts this boot to avoid
+        // blocking the save handler with multi-hundred-ms SD init timeouts.
+        static bool sd_permanently_absent = false;
         bool sd_available = true;
-        if (SD_MMC.cardType() == CARD_NONE) {
+        if (sd_permanently_absent) {
+            sd_available = false;
+        } else if (SD_MMC.cardType() == CARD_NONE) {
             Serial.println("[SD SAVE] Card not mounted, attempting remount...");
             SD_MMC.end();
             if (!SD_MMC.begin("/sdcard", true)) {
                 Serial.println("[SD SAVE] Remount failed, falling back to NVS");
+                sd_permanently_absent = true;
                 sd_available = false;
             }
         }
