@@ -859,7 +859,8 @@ void handle_gauges_page() {
     html += "}\n";
 
     // loadScreenFragment: serve from cache if available, else fetch from device
-    html += "function loadScreenFragment(idx){\n";
+    html += "function loadScreenFragment(idx,retries){\n";
+    html += "  retries=retries||0;\n";
     html += "  var cont=document.getElementById('screen-content');\n";
     html += "  if(fragmentCache[idx]){\n";
     html += "    cont.innerHTML=fragmentCache[idx];\n";
@@ -875,8 +876,10 @@ void handle_gauges_page() {
     html += "      setTimeout(function(){initScreenTab(idx);},10);\n";
     html += "      preloadFragments(idx);\n";
     html += "    })\n";
+    // Retry up to 3 times on network error (e.g. server still closing shell connection)
     html += "    .catch(function(e){\n";
-    html += "      cont.innerHTML='<p style=\"color:red;text-align:center;\">Failed to load \u2013 '+e+'</p>';\n";
+    html += "      if(retries<3){setTimeout(function(){loadScreenFragment(idx,retries+1);},700);}\n";
+    html += "      else{cont.innerHTML='<p style=\"color:red;text-align:center;\">Failed to load \u2013 '+e+'</p>';}\n";
     html += "    });\n";
     html += "}\n";
 

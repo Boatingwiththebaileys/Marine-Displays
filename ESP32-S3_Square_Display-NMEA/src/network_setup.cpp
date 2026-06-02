@@ -1057,7 +1057,8 @@ void handle_gauges_page() {
     // Fragment cache: key = "idx" for stored type, "idx_type" for type override.
     // Re-visiting the same tab is instant; first visit fetches from device.
     html += "var fragmentCache={};\n";
-    html += "function loadScreenFragment(idx,typeOverride){\n";
+    html += "function loadScreenFragment(idx,typeOverride,retries){\n";
+    html += "  retries=retries||0;\n";
     html += "  var cont=document.getElementById('screen-content');\n";
     html += "  var ckey=(typeOverride>=0)?(idx+'_'+typeOverride):String(idx);\n";
     html += "  if(fragmentCache[ckey]){\n";
@@ -1076,7 +1077,11 @@ void handle_gauges_page() {
     html += "      populateN2kSelects(cont);\n";  // populate dropdowns on fresh load
     html += "      preloadFragments(idx);\n";
     html += "    })\n";
-    html += "    .catch(function(e){cont.innerHTML='<p style=\"color:red;text-align:center;\">Failed &ndash; '+e+'</p>';});\n";
+    // Retry up to 3 times on network error (e.g. server still closing shell connection)
+    html += "    .catch(function(e){\n";
+    html += "      if(retries<3){setTimeout(function(){loadScreenFragment(idx,typeOverride,retries+1);},700);}\n";
+    html += "      else{cont.innerHTML='<p style=\"color:red;text-align:center;\">Failed &ndash; '+e+'</p>';}\n";
+    html += "    });\n";
     html += "}\n";
     // Preload remaining screen fragments sequentially in the background.
     // Uses a generation counter — if the user clicks a tab (incrementing preloadGen)
