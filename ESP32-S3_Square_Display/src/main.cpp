@@ -765,9 +765,14 @@ extern "C" void update_needles_for_screen(int screen_num) {
         float cog_rad = get_sensor_value_by_path("navigation.courseOverGroundTrue");
         float sog_ms  = get_sensor_value_by_path("navigation.speedOverGround");
         float cog_deg = isnan(cog_rad) ? NAN : cog_rad * (180.0f / (float)M_PI);
+        // Depth source stored in number_path as a SignalK path (empty = none)
+        float depth_m = NAN;
+        if (screen_configs[screen_idx].number_path[0] != '\0') {
+            depth_m = get_sensor_value_by_path(String(screen_configs[screen_idx].number_path));
+        }
         anchor_display_update(screen_idx,
             (float)g_nav_latitude, (float)g_nav_longitude,
-            cog_deg, sog_ms);
+            cog_deg, sog_ms, depth_m);
         return;
     }
     

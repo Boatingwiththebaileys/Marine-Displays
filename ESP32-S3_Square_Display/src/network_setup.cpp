@@ -1438,6 +1438,11 @@ void handle_gauges_screen() {
             "&bull; <code>navigation.courseOverGroundTrue</code> &mdash; COG (radians)<br>"
             "&bull; <code>navigation.speedOverGround</code> &mdash; SOG (m/s)<br>"
             "Anchor position and radius are saved to device flash (NVS) and restored on reboot.</p>";
+    html += "<div style='margin-bottom:8px;'><label>Depth Signal K path (optional): "
+            "<input name='number_path_" + String(s) + "' type='text' "
+            "placeholder='e.g. environment.depth.belowKeel' "
+            "value='" + String(screen_configs[s].number_path) + "' style='width:70%'>"
+            "</label></div>";
     html += "</div>"; // close anchorconfig
 
     flushHtml();
