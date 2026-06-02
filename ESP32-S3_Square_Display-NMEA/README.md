@@ -5,7 +5,7 @@ ESP32 customisable display using data directly from the boats NMEA2000 network.
 ------------------------------
 
 It features:
-- 30+ N2K PGNs supported — engine, transmission, fluid levels, rudder, heading, rate of turn, attitude, battery/DC, boat speed, depth,  distance log, GPS position, COG/SOG, XTE, waypoints, AIS, wind, environment/temp/pressure, trim tabs, system time
+- 95 N2K data fields supported — engine, transmission, fluid levels, rudder, heading, rate of turn, attitude, battery/DC, boat speed, depth, distance log, GPS position, COG/SOG, XTE, waypoints, AIS, wind, environment/temp/pressure, trim tabs, system time
 - Customisable background images,
 - Custom icons, 
 - Alerting through icon colours and built in buzzer
@@ -13,6 +13,8 @@ It features:
 - WebUI driven
 - Touch and non Touch options
 - Number display with different display options, Single large display, Dual screen, Quad Screen
+- Anchor watch display
+- Custom per-screen display labels (override the default field description shown on screen)
 - Dual Gauge, Guage with added number display (Wind instrument style)
 - Graph display with the option for an additional data source & data retained while device is powered
 - Navigation Display with heading & Dual data fields
