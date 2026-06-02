@@ -768,9 +768,14 @@ extern "C" void update_needles_for_screen(int screen_num) {
         // Anchor alarm — own-boat GPS position + COG/SOG
         float own_cog_deg = get_sensor_value_by_path(String((int)N2K_COG));
         float own_sog_ms  = get_sensor_value_by_path(String((int)N2K_SOG));
+        // Depth source is stored in number_path as N2K field ID string (empty = none)
+        float depth_m = NAN;
+        if (screen_configs[screen_idx].number_path[0] != '\0') {
+            depth_m = get_sensor_value_by_path(String(screen_configs[screen_idx].number_path));
+        }
         anchor_display_update(screen_idx,
             (float)g_nav_latitude, (float)g_nav_longitude,
-            own_cog_deg, own_sog_ms);
+            own_cog_deg, own_sog_ms, depth_m);
         return;
     } else if (screen_configs[screen_idx].display_type == DISPLAY_TYPE_AIS) {
         // AIS radar display — N2K targets arrive via PGN handlers;

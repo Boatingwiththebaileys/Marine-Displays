@@ -77,6 +77,9 @@ static lv_color_t* a_cbuf[NUM_SCREENS];    // PSRAM canvas buffer
 // Status-band label (distance, bearing, max-drift, radius)
 static lv_obj_t* a_status_lbl[NUM_SCREENS];
 
+// Depth label (top-left corner of map area)
+static lv_obj_t* a_depth_lbl[NUM_SCREENS];
+
 // Alarm toggle button label
 static lv_obj_t* a_alarm_lbl[NUM_SCREENS];
 
@@ -84,6 +87,7 @@ static lv_obj_t* a_alarm_lbl[NUM_SCREENS];
 static lv_obj_t* a_radius_lbl[NUM_SCREENS];
 
 static bool a_created[NUM_SCREENS] = {};
+static bool a_depth_lbl_used[NUM_SCREENS] = {};
 
 // ── Per-screen anchor state ───────────────────────────────────────────────────
 struct AnchorState {
@@ -331,6 +335,14 @@ void anchor_display_create(int n) {
     lv_obj_set_pos(a_status_lbl[n], 6, 4);
     lv_label_set_text(a_status_lbl[n], "No GPS");
 
+    // Depth label — top-right, only shown when a depth source is configured
+    a_depth_lbl[n] = lv_label_create(a_bg[n]);
+    lv_obj_set_style_text_color(a_depth_lbl[n], lv_color_make(100, 200, 255), 0);
+    lv_obj_set_style_text_font(a_depth_lbl[n], &inter_16, 0);
+    lv_obj_set_pos(a_depth_lbl[n], SCR_W - 120, 4);
+    lv_label_set_text(a_depth_lbl[n], "");
+    a_depth_lbl_used[n] = false;
+
     // ── D-pad: anchor nudge buttons (bottom-right of map area) ───────────────
     // Each tap moves anchor by 10% of alarm radius. Uses symbol font (no inter_* needed).
     {
@@ -568,7 +580,7 @@ void anchor_display_touch(int n, int x, int y) {
 
 // ── Update (called every loop tick) ─────────────────────────────────────────
 void anchor_display_update(int n, float own_lat, float own_lon,
-                           float cog_deg, float sog_ms) {
+                           float cog_deg, float sog_ms, float depth_m) {
     if (!a_created[n] || !a_canvas[n]) return;
 
     // Store own position for tap-to-anchor conversion
@@ -687,6 +699,18 @@ void anchor_display_update(int n, float own_lat, float own_lon,
             dist_m, brg_from, g_state[n].max_drift_m);
     }
     lv_label_set_text(a_status_lbl[n], buf);
+
+    // ── Depth label ───────────────────────────────────────────────────────────
+    if (a_depth_lbl[n]) {
+        if (!isnan(depth_m)) {
+            char dbuf[32];
+            snprintf(dbuf, sizeof(dbuf), "D: %.1fm", depth_m);
+            lv_label_set_text(a_depth_lbl[n], dbuf);
+            a_depth_lbl_used[n] = true;
+        } else if (!a_depth_lbl_used[n]) {
+            lv_label_set_text(a_depth_lbl[n], "");
+        }
+    }
 }
 
 // ── Destroy ───────────────────────────────────────────────────────────────────
@@ -698,6 +722,8 @@ void anchor_display_destroy(int n) {
     a_status_lbl[n] = NULL;
     a_alarm_lbl[n]  = NULL;
     a_radius_lbl[n] = NULL;
+    a_depth_lbl[n]  = NULL;
+    a_depth_lbl_used[n] = false;
     // Track PSRAM buffers are intentionally kept across destroy/create
     // so the track survives a display type change.
     a_created[n] = false;

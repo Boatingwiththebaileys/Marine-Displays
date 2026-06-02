@@ -1686,6 +1686,30 @@ void handle_gauges_screen() {
     html += "<h4>Anchor Alarm Settings</h4>";
     html += "<p style='color:#aaa;'>Tap the map to place the anchor, or use <b>Drop Here</b> to drop at the current boat position. Use [&minus;]/[+] to adjust the alarm radius. Arm/disarm the alarm with the ALARM button.</p>";
     html += "<p style='color:#aaa;'>GPS position is required (NMEA 2000 PGN 129025/129029). Track history is stored in RAM and lost on reboot.</p>";
+    // Depth source — stored in number_path (unused for anchor display type)
+    {
+        const char* cur = screen_configs[s].number_path;
+        char buf50[50];
+        snprintf(buf50, sizeof(buf50), "%d", (int)N2K_WATER_DEPTH);
+        String wdVal  = String((int)N2K_WATER_DEPTH);
+        String bkVal  = String((int)N2K_DEPTH_BELOW_KEEL);
+        String offVal = String((int)N2K_DEPTH_OFFSET);
+        html += "<div style='margin-bottom:8px;'><label>Depth display: ";
+        html += "<select name='number_path_" + String(s) + "' style='width:200px'>";
+        html += "<option value=''";
+        if (!cur[0]) html += " selected";
+        html += ">None</option>";
+        html += "<option value='" + wdVal + "'";
+        if (wdVal == String(cur)) html += " selected";
+        html += ">Water Depth</option>";
+        html += "<option value='" + bkVal + "'";
+        if (bkVal == String(cur)) html += " selected";
+        html += ">Depth Below Keel</option>";
+        html += "<option value='" + offVal + "'";
+        if (offVal == String(cur)) html += " selected";
+        html += ">Depth Offset</option>";
+        html += "</select></label></div>";
+    }
     } // end displayType == DISPLAY_TYPE_ANCHOR
     flushHtml();
 
