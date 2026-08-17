@@ -2473,7 +2473,7 @@ void handle_network_page() {
     html += "<div id='scanResults' style='margin:0 0 10px 148px;display:none'></div>";
     html += "<div class='form-row'><label>Password:</label><input name='password' type='password' value='" + saved_password + "'></div>";
 
-    html += "<div class='form-row'><label>NMEA 2000:</label><span style='color:#4a4;font-weight:bold'>CAN Bus (TX=" + String(CAN_TX_PIN) + ", RX=" + String(CAN_RX_PIN) + ")</span></div>";
+    html += "<div class='form-row'><label>NMEA 2000:</label><span id='n2kstat' style='color:#888'>checking...</span></div>";
 
     html += "<div class='form-row'><label>ESP32 Hostname:</label><input name='hostname' type='text' value='" + saved_hostname + "'></div>";
     html += "<div style='text-align:center;margin-top:12px;'><button class='tab-btn' type='submit' style='padding:10px 18px;'>Save & Reboot</button></div>";
@@ -2520,6 +2520,21 @@ void handle_network_page() {
               "fetch('/scan-wifi').then(function(){pollResults(8);}).catch(function(e){div.innerHTML='Scan error: '+e;btn.disabled=false;btn.textContent='Scan';});"
             "}"
             "function pickSsid(s){document.getElementById('ssid').value=s;}"
+            // Poll /n2k-stats every 2 s and update the NMEA 2000 status span
+            "function pollN2k(){"
+              "fetch('/n2k-stats').then(function(r){return r.json();}).then(function(d){"
+                "var el=document.getElementById('n2kstat');"
+                "if(d.pgns>0){"
+                  "el.style.color='#4a4';el.style.fontWeight='bold';"
+                  "el.textContent='Active (' + d.pgns + ' PGNs received)';"
+                "}else{"
+                  "el.style.color='#c80';el.style.fontWeight='normal';"
+                  "el.textContent='No data (bus connected?)';"
+                "}"
+              "}).catch(function(){});"
+              "setTimeout(pollN2k,2000);"
+            "}"
+            "pollN2k();"
             "</script>";
 
     html += "</div></div></body></html>";
@@ -2897,6 +2912,10 @@ void setup_network() {
     config_server.on("/save-wifi", HTTP_POST, handle_save_wifi);
     config_server.on("/scan-wifi", HTTP_GET, handle_scan_wifi);
     config_server.on("/scan-wifi-results", HTTP_GET, handle_scan_wifi_results);
+    config_server.on("/n2k-stats", HTTP_GET, []() {
+        config_server.send(200, "application/json",
+            "{\"pgns\":" + String(get_n2k_msg_count()) + "}");
+    });
     config_server.on("/device", handle_device_page);
     config_server.on("/save-device", HTTP_POST, handle_save_device);
     config_server.on("/test-gauge", HTTP_POST, handle_test_gauge);
