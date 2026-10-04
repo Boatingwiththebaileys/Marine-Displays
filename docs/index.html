@@ -15,6 +15,7 @@
     --dim: #8fa3b3;
     --accent: #5fb4e6;
     --warn: #e6a948;
+    --n2k: #f0a030;
   }
   * { box-sizing: border-box; }
   body {
@@ -37,10 +38,15 @@
     display: grid; gap: 10px; align-content: start;
   }
   .board p { margin: 0; color: var(--dim); font-size: 14px; }
-  .tag {
-    display: inline-block; font-size: 12px; padding: 1px 8px; border-radius: 99px;
-    border: 1px solid var(--line); color: var(--dim); margin-left: 6px; vertical-align: 2px;
+  .source {
+    display: inline-flex; align-items: center; gap: 7px; justify-self: start;
+    font-size: 13px; font-weight: 600; padding: 4px 10px 4px 6px; border-radius: 99px;
   }
+  .source.sk { background: #fff; color: #003399; }
+  .source.sk img { height: 18px; width: auto; }
+  .source.n2k { background: var(--n2k); color: #1a1205; }
+  .source.n2k svg { height: 14px; width: auto; }
+  .board.n2k-card { border-color: var(--n2k); box-shadow: inset 4px 0 0 var(--n2k); background: rgb(240 160 48 / .06); }
   esp-web-install-button { --esp-tools-button-color: #1f6f9f; --esp-tools-button-border-radius: 6px; }
   ol { margin: 0; padding-left: 1.3em; display: grid; gap: 8px; }
   li::marker { color: var(--dim); }
@@ -64,15 +70,17 @@
     <h2>1. Pick your screen and install</h2>
     <div class="boards">
       <div class="board">
-        <h3>4" Square Display <span class="tag">Signal K</span></h3>
+        <div class="source sk"><img src="img/signalk.svg" alt="">Signal K</div>
+        <h3>4" Square Display</h3>
         <p>Waveshare ESP32-S3-Touch-LCD-4, 480×480. V3 and V4 boards. Gets its data from Signal K over WiFi.</p>
         <esp-web-install-button manifest="manifest-square.json">
           <span slot="unsupported" class="unsupported">This browser can't install firmware. Use Chrome or Edge on a computer.</span>
           <span slot="not-allowed" class="unsupported">Open this page over HTTPS to install.</span>
         </esp-web-install-button>
       </div>
-      <div class="board">
-        <h3>4" Square Display <span class="tag">NMEA 2000</span></h3>
+      <div class="board n2k-card">
+        <div class="source n2k"><svg viewBox="0 0 24 16" aria-hidden="true"><path d="M1 4h22M6 4v8M12 4v8M18 4v8" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/><circle cx="6" cy="13" r="2.2" fill="currentColor"/><circle cx="12" cy="13" r="2.2" fill="currentColor"/><circle cx="18" cy="13" r="2.2" fill="currentColor"/><rect x="0" y="1.5" width="2.5" height="5" rx="1" fill="currentColor"/><rect x="21.5" y="1.5" width="2.5" height="5" rx="1" fill="currentColor"/></svg>NMEA 2000</div>
+        <h3>4" Square Display</h3>
         <p>Waveshare ESP32-S3-Touch-LCD-4, 480×480. V3 and V4 boards reading data straight from the boat's NMEA 2000 network.</p>
         <esp-web-install-button manifest="manifest-square-nmea.json">
           <span slot="unsupported" class="unsupported">This browser can't install firmware. Use Chrome or Edge on a computer.</span>
@@ -80,7 +88,8 @@
         </esp-web-install-button>
       </div>
       <div class="board">
-        <h3>2.8" Round Display <span class="tag">Signal K</span></h3>
+        <div class="source sk"><img src="img/signalk.svg" alt="">Signal K</div>
+        <h3>2.8" Round Display</h3>
         <p>Waveshare ESP32-S3-Touch-LCD-2.8C, 480×480 round gauge.</p>
         <esp-web-install-button manifest="manifest-round-28.json">
           <span slot="unsupported" class="unsupported">This browser can't install firmware. Use Chrome or Edge on a computer.</span>
@@ -88,7 +97,8 @@
         </esp-web-install-button>
       </div>
       <div class="board">
-        <h3>2.1" Round Display <span class="tag">Signal K</span></h3>
+        <div class="source sk"><img src="img/signalk.svg" alt="">Signal K</div>
+        <h3>2.1" Round Display</h3>
         <p>Waveshare ESP32-S3 2.1" round display, 480×480.</p>
         <esp-web-install-button manifest="manifest-round-21.json">
           <span slot="unsupported" class="unsupported">This browser can't install firmware. Use Chrome or Edge on a computer.</span>
@@ -96,7 +106,8 @@
         </esp-web-install-button>
       </div>
       <div class="board">
-        <h3>4.2" RLCD Display <span class="tag">Signal K</span></h3>
+        <div class="source sk"><img src="img/signalk.svg" alt="">Signal K</div>
+        <h3>4.2" RLCD Display</h3>
         <p>Waveshare ESP32-S3 4.2" reflective LCD. Easy to read in sunlight.</p>
         <esp-web-install-button manifest="manifest-rlcd-42.json">
           <span slot="unsupported" class="unsupported">This browser can't install firmware. Use Chrome or Edge on a computer.</span>
