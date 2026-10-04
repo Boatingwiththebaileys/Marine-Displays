@@ -2,12 +2,18 @@
 # the browser installer in docs/ to GitHub Pages, and attaches the .bin
 # files to the GitHub release when a version tag (v1.2.3) is pushed.
 #
-# One-time setup: Settings -> Pages -> Source: "GitHub Actions".
+# Pushing changes under docs/ to main republishes the page only, reusing the
+# firmware from the latest release (no rebuild).
+#
+# One-time setup: Settings -> Pages -> Source: "GitHub Actions", and allow
+# tags matching v* in Settings -> Environments -> github-pages.
 name: Web installer
 
 on:
   push:
     tags: ['v*']
+    branches: [main]
+    paths: ['docs/**']
   workflow_dispatch:
 
 permissions:
@@ -21,6 +27,7 @@ concurrency:
 
 jobs:
   build:
+    if: github.ref_type == 'tag' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -52,20 +59,33 @@ jobs:
 
   publish:
     needs: build
+    if: always() && (needs.build.result == 'success' || needs.build.result == 'skipped')
     runs-on: ubuntu-latest
     environment:
       name: github-pages
       url: ${{ steps.deploy.outputs.page_url }}
+    env:
+      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - name: Use freshly built firmware
+        if: needs.build.result == 'success'
+        uses: actions/download-artifact@v4
         with:
           path: docs
           merge-multiple: true
+      - name: Reuse firmware from latest release (page-only update)
+        if: needs.build.result == 'skipped'
+        run: gh release download --pattern '*.bin' --dir docs
       - name: Stamp version into manifests
         run: |
-          VERSION="${GITHUB_REF_NAME}"
-          [[ "$GITHUB_REF_TYPE" == tag ]] || VERSION="$(grep FW_VERSION_BASE version.h | cut -d'"' -f2)-$(git rev-parse --short HEAD)"
+          if [[ "$GITHUB_REF_TYPE" == tag ]]; then
+            VERSION="${GITHUB_REF_NAME}"
+          elif [[ "${{ needs.build.result }}" == skipped ]]; then
+            VERSION="$(gh release view --json tagName -q .tagName)"
+          else
+            VERSION="$(grep FW_VERSION_BASE version.h | cut -d'"' -f2)-$(git rev-parse --short HEAD)"
+          fi
           sed -i "s/\"version\": \"dev\"/\"version\": \"$VERSION\"/" docs/manifest-*.json
           ls -la docs
       - uses: actions/upload-pages-artifact@v3
