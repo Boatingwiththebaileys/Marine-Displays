@@ -21,6 +21,9 @@ void disable_nmea2000();
 // Returns true while the N2K task is running.
 bool is_nmea2000_running();
 
+// Total PGN messages received since enable_nmea2000().
+uint32_t get_n2k_msg_count();
+
 // Pause / resume display updates (N2K CAN task keeps running).
 // Used to prevent LVGL mutations while the config page is open.
 void pause_n2k_updates();

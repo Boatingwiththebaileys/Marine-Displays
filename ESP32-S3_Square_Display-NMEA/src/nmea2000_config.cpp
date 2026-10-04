@@ -25,6 +25,9 @@ tNMEA2000 &NMEA2000 = NMEA2000_drv;
 static TaskHandle_t n2k_task_handle = nullptr;
 static bool n2k_running = false;
 static bool n2k_updates_paused = false;
+static volatile uint32_t n2k_msg_count = 0;
+
+uint32_t get_n2k_msg_count() { return n2k_msg_count; }
 
 // ── Forward declarations ─────────────────────────────────────────────
 static void n2k_task(void* param);
@@ -910,6 +913,7 @@ static void handle_ais_class_b_static_b(const tN2kMsg& msg) {  // PGN 129810
 
 // ── Dispatch incoming NMEA 2000 messages ─────────────────────────────
 static void handle_n2k_msg(const tN2kMsg& msg) {
+    n2k_msg_count++;
     switch (msg.PGN) {
         case 126992: handle_system_time(msg);       break;
         case 127245: handle_rudder(msg);            break;

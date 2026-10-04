@@ -20,8 +20,9 @@ void tNMEA2000_twai::InitCANFrameBuffers() {
 bool tNMEA2000_twai::CANOpen() {
     if (_isOpen) return true;
 
+    // NORMAL mode so the hardware asserts ACK bits; N2km_ListenOnly keeps us silent at the app level
     twai_general_config_t g_config = TWAI_GENERAL_CONFIG_DEFAULT(
-        _txPin, _rxPin, TWAI_MODE_LISTEN_ONLY);
+        _txPin, _rxPin, TWAI_MODE_NORMAL);
     g_config.rx_queue_len = MaxCANReceiveFrames;
     g_config.tx_queue_len = MaxCANSendFrames;
 
