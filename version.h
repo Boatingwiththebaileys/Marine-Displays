@@ -3,10 +3,10 @@
 
 #define FW_VERSION_MAJOR 1
 #define FW_VERSION_MINOR 0
-#define FW_VERSION_PATCH 0
+#define FW_VERSION_PATCH 1
 
 // Human-readable base version (bump manually for releases)
-#define FW_VERSION_BASE "1.0.0"
+#define FW_VERSION_BASE "1.0.1"
 
 // FW_VERSION is set by the build script to include the git hash,
 // e.g. "1.0.0-85896d6".  If not defined (standalone compile),

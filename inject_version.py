@@ -35,6 +35,21 @@ except Exception:
 
 fw_version = "%s-%s" % (version_base, git_hash)
 
+# Release builds (HEAD is exactly on a tag, e.g. v1.0.0) use the tag itself,
+# so the device shows the same version as the web installer and release.
+release_tag = os.environ.get("GITHUB_REF_NAME") if os.environ.get("GITHUB_REF_TYPE") == "tag" else None
+if not release_tag:
+    try:
+        release_tag = subprocess.check_output(
+            ["git", "describe", "--tags", "--exact-match", "HEAD"],
+            cwd=script_dir,
+            stderr=subprocess.DEVNULL
+        ).decode().strip()
+    except Exception:
+        pass
+if release_tag:
+    fw_version = release_tag
+
 # Check for uncommitted changes (tracked files only) and append -dirty
 try:
     status = subprocess.check_output(

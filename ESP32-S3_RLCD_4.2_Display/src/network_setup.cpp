@@ -237,6 +237,7 @@ static void handle_root() {
     html += "<button class='tab-btn' onclick=\"location.href='/update'\">Firmware Update</button>";
     html += "</div>";
 
+    html += "<div style='text-align:center;margin-top:18px;font-size:0.8em;color:#888;'>Firmware: " + String(FW_VERSION) + "</div>";
     html += "</div></div></body></html>";
     config_server.send(200, "text/html", html);
 }
