@@ -932,7 +932,7 @@ void setup_network() {
     } else {
         Serial.println("\n[WiFi] Failed, starting AP mode");
         WiFi.mode(WIFI_AP);
-        WiFi.softAP("RLCD-Marine", "boatdisplay");
+        WiFi.softAP("ESP32-RLCDDisplay", "12345678");
         WiFi.setSleep(false);
         Serial.printf("[WiFi] AP IP: %s\n", WiFi.softAPIP().toString().c_str());
     }

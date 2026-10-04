@@ -1,3 +1,13 @@
+## Easy install — no building needed
+
+**[Install from your browser →](https://boatingwiththebaileys.github.io/Marine-Displays/)**
+
+Plug your display into a computer with a USB-C data cable, open the link above in Chrome or Edge, pick your screen and click **Install**. Ready-built `.bin` files for each display are also attached to every [release](https://github.com/Boatingwiththebaileys/Marine-Displays/releases), flashable at offset `0x0` with esptool.
+
+Want to change the code? The PlatformIO build instructions are in each display's folder.
+
+---
+
 Hi, 
 
 I've created some marine displays using ESP32 display boards. The idea behind the project is for them to be easy to build, WebUI-driven, but still customisable to give you a polished look and feel to the unit. At the moment I'm working with two devices, both from Waveshare: 

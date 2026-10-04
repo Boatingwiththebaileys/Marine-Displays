@@ -1,0 +1,11 @@
+{
+  "name": "Marine Display – 4.2in RLCD",
+  "version": "dev",
+  "new_install_prompt_erase": true,
+  "builds": [
+    {
+      "chipFamily": "ESP32-S3",
+      "parts": [{ "path": "marine-display-rlcd-42.bin", "offset": 0 }]
+    }
+  ]
+}

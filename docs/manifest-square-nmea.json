@@ -1,0 +1,11 @@
+{
+  "name": "Marine Display – 4in Square (NMEA 2000)",
+  "version": "dev",
+  "new_install_prompt_erase": true,
+  "builds": [
+    {
+      "chipFamily": "ESP32-S3",
+      "parts": [{ "path": "marine-display-square-nmea.bin", "offset": 0 }]
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "name": "Marine Display – 2.8in Round",
+  "version": "dev",
+  "new_install_prompt_erase": true,
+  "builds": [
+    {
+      "chipFamily": "ESP32-S3",
+      "parts": [{ "path": "marine-display-round-28.bin", "offset": 0 }]
+    }
+  ]
+}

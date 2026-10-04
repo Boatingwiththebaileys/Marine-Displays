@@ -1,0 +1,11 @@
+{
+  "name": "Marine Display – 4in Square (Signal K)",
+  "version": "dev",
+  "new_install_prompt_erase": true,
+  "builds": [
+    {
+      "chipFamily": "ESP32-S3",
+      "parts": [{ "path": "marine-display-square.bin", "offset": 0 }]
+    }
+  ]
+}

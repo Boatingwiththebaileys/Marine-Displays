@@ -1,0 +1,80 @@
+# Builds every display, merges each into a single flashable .bin, publishes
+# the browser installer in docs/ to GitHub Pages, and attaches the .bin
+# files to the GitHub release when a version tag (v1.2.3) is pushed.
+#
+# One-time setup: Settings -> Pages -> Source: "GitHub Actions".
+name: Web installer
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write   # attach .bin files to releases
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { dir: ESP32-S3_Square_Display,              env: waveshare_square,   out: marine-display-square }
+          - { dir: ESP32-S3_Square_Display-NMEA,         env: waveshare_square,   out: marine-display-square-nmea }
+          - { dir: ESP32-S3_2.8in_IPS_LCD_Round_Display, env: waveshare_28_round, out: marine-display-round-28 }
+          - { dir: ESP32-S3_2.1in_IPS_LCD_Round_Display, env: waveshare_21_round, out: marine-display-round-21 }
+          - { dir: ESP32-S3_RLCD_4.2_Display,            env: waveshare_rlcd,     out: marine-display-rlcd-42 }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/cache@v4
+        with:
+          path: ~/.platformio
+          key: pio-${{ matrix.env }}-${{ hashFiles(format('{0}/platformio.ini', matrix.dir)) }}
+      - run: pip install platformio
+      - name: Build
+        run: pio run -d "${{ matrix.dir }}" -e ${{ matrix.env }}
+      - name: Merge into one image
+        run: python tools/merge_firmware.py "${{ matrix.dir }}" ${{ matrix.env }} out/${{ matrix.out }}.bin
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.out }}
+          path: out/${{ matrix.out }}.bin
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: docs
+          merge-multiple: true
+      - name: Stamp version into manifests
+        run: |
+          VERSION="${GITHUB_REF_NAME}"
+          [[ "$GITHUB_REF_TYPE" == tag ]] || VERSION="$(grep FW_VERSION_BASE version.h | cut -d'"' -f2)-$(git rev-parse --short HEAD)"
+          sed -i "s/\"version\": \"dev\"/\"version\": \"$VERSION\"/" docs/manifest-*.json
+          ls -la docs
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
+      - id: deploy
+        uses: actions/deploy-pages@v4
+      - name: Attach firmware to release
+        if: github.ref_type == 'tag'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: docs/*.bin
