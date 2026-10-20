@@ -1,9 +1,14 @@
-# Builds every display, merges each into a single flashable .bin, publishes
-# the browser installer in docs/ to GitHub Pages, and attaches the .bin
-# files to the GitHub release when a version tag (v1.2.3) is pushed.
+# Builds every display, merges each into a single flashable .bin, creates a
+# GitHub release with the .bin files, and publishes the browser installer
+# in docs/ to GitHub Pages.
 #
-# Pushing changes under docs/ to main republishes the page only, reusing the
-# firmware from the latest release (no rebuild).
+#   Stable release:  push tag vX.Y.Z         -> release; main install buttons
+#   Beta release:    push tag vX.Y.Z-beta.N  -> pre-release; installer's Beta
+#                    section only. Stable buttons keep the latest stable.
+#   docs/ change on main, or manual run      -> republish the page only
+#
+# The page itself always comes from main, and its firmware always comes from
+# the releases, so a beta can never replace the stable install.
 #
 # One-time setup: Settings -> Pages -> Source: "GitHub Actions", and allow
 # tags matching v* in Settings -> Environments -> github-pages.
@@ -23,11 +28,11 @@ permissions:
 
 concurrency:
   group: pages
-  cancel-in-progress: true
+  cancel-in-progress: false   # never cancel a release half way
 
 jobs:
   build:
-    if: github.ref_type == 'tag' || github.event_name == 'workflow_dispatch'
+    if: github.ref_type == 'tag'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -57,44 +62,62 @@ jobs:
           name: ${{ matrix.out }}
           path: out/${{ matrix.out }}.bin
 
-  publish:
+  release:
     needs: build
-    if: always() && (needs.build.result == 'success' || needs.build.result == 'skipped')
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: out
+          merge-multiple: true
+      - name: Create GitHub release (pre-release for -beta tags)
+        uses: softprops/action-gh-release@v2
+        with:
+          files: out/*.bin
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          make_latest: ${{ !contains(github.ref_name, '-') }}
+
+  publish:
+    needs: [build, release]
+    if: ${{ !cancelled() && !contains(needs.*.result, 'failure') }}
     runs-on: ubuntu-latest
     environment:
       name: github-pages
       url: ${{ steps.deploy.outputs.page_url }}
     env:
       GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
     steps:
       - uses: actions/checkout@v4
-      - name: Use freshly built firmware
-        if: needs.build.result == 'success'
-        uses: actions/download-artifact@v4
         with:
-          path: docs
-          merge-multiple: true
-      - name: Reuse firmware from latest release (page-only update)
-        if: needs.build.result == 'skipped'
-        run: gh release download --pattern '*.bin' --dir docs
-      - name: Stamp version into manifests
+          ref: main
+      - name: Collect firmware from releases
         run: |
-          if [[ "$GITHUB_REF_TYPE" == tag ]]; then
-            VERSION="${GITHUB_REF_NAME}"
-          elif [[ "${{ needs.build.result }}" == skipped ]]; then
-            VERSION="$(gh release view --json tagName -q .tagName)"
+          set -euo pipefail
+          STABLE=$(gh release view --json tagName -q .tagName)
+          STABLE_AT=$(gh release view "$STABLE" --json publishedAt -q .publishedAt)
+          echo "Stable: $STABLE ($STABLE_AT)"
+          gh release download "$STABLE" --pattern '*.bin' --dir docs
+          sed -i "s/\"version\": \"dev\"/\"version\": \"$STABLE\"/" docs/manifest-*.json
+
+          # Newest pre-release, shown only while it's newer than the stable release
+          read -r BETA BETA_AT < <(gh release list --limit 50 --json tagName,isPrerelease,publishedAt \
+            -q '[.[] | select(.isPrerelease)] | sort_by(.publishedAt) | last | "\(.tagName) \(.publishedAt)"') || true
+          if [[ -n "${BETA:-}" && "$BETA" != "null" && "$BETA_AT" > "$STABLE_AT" && -d docs/beta ]]; then
+            echo "Beta: $BETA ($BETA_AT)"
+            for m in docs/beta/manifest-*.json; do
+              bin=$(python3 -c "import json,sys;print(json.load(open(sys.argv[1]))['builds'][0]['parts'][0]['path'])" "$m")
+              gh release download "$BETA" --pattern "$bin" --dir docs/beta
+            done
+            sed -i "s/\"version\": \"dev\"/\"version\": \"$BETA\"/" docs/beta/manifest-*.json
           else
-            VERSION="$(grep FW_VERSION_BASE version.h | cut -d'"' -f2)-$(git rev-parse --short HEAD)"
+            echo "No current beta"
+            rm -rf docs/beta
           fi
-          sed -i "s/\"version\": \"dev\"/\"version\": \"$VERSION\"/" docs/manifest-*.json
-          ls -la docs
+          find docs -name '*.bin' -o -name 'manifest-*.json' | sort
       - uses: actions/upload-pages-artifact@v3
         with:
           path: docs
       - id: deploy
         uses: actions/deploy-pages@v4
-      - name: Attach firmware to release
-        if: github.ref_type == 'tag'
-        uses: softprops/action-gh-release@v2
-        with:
-          files: docs/*.bin
