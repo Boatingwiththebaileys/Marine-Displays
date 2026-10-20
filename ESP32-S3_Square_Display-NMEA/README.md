@@ -23,6 +23,19 @@ It features:
 - Dimming with night mode, display sleep options
 - Unit conversions
 - OTA updates
+- NMEA 2000 over WiFi from a gateway (beta) — see below
+
+### NMEA 2000 over WiFi (beta)
+
+Instead of wiring the display to the CAN bus, it can take the same NMEA 2000 data from a WiFi gateway. In the display's web page go to **Network Setup → NMEA 2000 data source**, choose **WiFi gateway** and enter:
+
+- **Gateway format**: YD RAW (Yacht Devices YDWG-02 / YDEN-02), Actisense NGT binary, or SeaSmart `$PCDIN` (Digital Yacht, Chetco and others). Use whatever your gateway is set to send.
+- **Connection**: TCP (the display connects to the gateway's IP address and port) or UDP (the gateway sends to the display on a port).
+- **Gateway IP address and port**, as shown in the gateway's own settings.
+
+The display and gateway must be on the same WiFi network. The display only receives: it never sends anything to the gateway or onto the NMEA 2000 bus. The Network Setup page shows whether it's connected and how many messages it has received. If it shows "unreadable lines", the format setting doesn't match the gateway.
+
+Please report what works (and what doesn't) with your gateway on the [GitHub issues page](https://github.com/Boatingwiththebaileys/Marine-Displays/issues).
 
 ESP32-S3 Square Display
 

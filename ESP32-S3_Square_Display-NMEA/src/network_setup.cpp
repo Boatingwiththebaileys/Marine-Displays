@@ -2,6 +2,7 @@
 
 #include "gauge_config.h"
 #include "version.h"
+#include "n2k_gateway.h"
 #include <Arduino.h>
 #include <WiFi.h>
 #include <WebServer.h>
@@ -2443,6 +2444,33 @@ static String rssi_bar(int rssi) {
          + "<span style='display:inline-block;width:" + String(pct) + "%;background:" + color + ";height:100%;border-radius:3px'></span></span>";
 }
 
+static String html_attr_escape(const String& in) {
+    String out;
+    for (size_t i = 0; i < in.length(); i++) {
+        char c = in[i];
+        if (c == '&') out += "&amp;";
+        else if (c == '\'') out += "&#39;";
+        else if (c == '"') out += "&quot;";
+        else if (c == '<') out += "&lt;";
+        else if (c == '>') out += "&gt;";
+        else out += c;
+    }
+    return out;
+}
+
+static String json_escape(const String& in) {
+    String out;
+    for (size_t i = 0; i < in.length(); i++) {
+        char c = in[i];
+        if (c == '"' || c == '\\') { out += '\\'; out += c; }
+        else if ((uint8_t)c < 0x20) out += ' ';
+        else out += c;
+    }
+    return out;
+}
+
+void handle_save_n2k_source();
+
 void handle_network_page() {
     String html = "<html><head>";
     html += STYLE;
@@ -2478,6 +2506,35 @@ void handle_network_page() {
     html += "<div class='form-row'><label>ESP32 Hostname:</label><input name='hostname' type='text' value='" + saved_hostname + "'></div>";
     html += "<div style='text-align:center;margin-top:12px;'><button class='tab-btn' type='submit' style='padding:10px 18px;'>Save & Reboot</button></div>";
     html += "</form>";
+
+    // NMEA 2000 data source: CAN port or WiFi gateway (beta)
+    {
+        const N2kGwSettings& gw = n2k_gw_settings();
+        auto sel = [](bool on) { return on ? String(" selected") : String(""); };
+        html += "<h3 style='margin-top:22px;'>NMEA 2000 data source <span style='font-size:0.7em;background:#f0a030;color:#1a1205;border-radius:10px;padding:1px 8px;vertical-align:2px'>BETA</span></h3>";
+        html += "<form method='POST' action='/save-n2k-source'>";
+        html += "<div class='form-row'><label>Source:</label><select name='src' id='n2ksrc' onchange='n2kSrcChanged()'>"
+                "<option value='can'" + sel(!gw.use_wifi) + ">CAN port (wired to the NMEA 2000 bus)</option>"
+                "<option value='wifi'" + sel(gw.use_wifi) + ">WiFi gateway</option></select></div>";
+        html += "<div id='n2kgw' style='display:" + String(gw.use_wifi ? "block" : "none") + "'>";
+        html += "<div class='form-row'><label>Gateway format:</label><select name='fmt'>";
+        for (uint8_t f = N2KGW_FMT_YDRAW; f <= N2KGW_FMT_SEASMART; f++) {
+            html += "<option value='" + String(f) + "'" + sel(gw.format == f) + ">" + n2k_gw_format_name(f) + "</option>";
+        }
+        html += "</select></div>";
+        html += "<div class='form-row'><label>Connection:</label><select name='proto' id='n2kproto' onchange='n2kSrcChanged()'>"
+                "<option value='tcp'" + sel(!gw.udp) + ">TCP (display connects to the gateway)</option>"
+                "<option value='udp'" + sel(gw.udp) + ">UDP (gateway sends to the display)</option></select></div>";
+        html += "<div class='form-row' id='n2khostrow'><label>Gateway IP address:</label><input name='host' type='text' value='" + html_attr_escape(gw.host) + "' placeholder='e.g. 192.168.4.1'></div>";
+        html += "<div class='form-row'><label>Port:</label><input name='port' type='number' min='1' max='65535' value='" + (gw.port ? String(gw.port) : String("")) + "'></div>";
+        html += "<p style='color:#888;font-size:0.85em;margin:4px 0 0'>Use the data format, port and protocol set up on your gateway's own settings page. "
+                "The display only receives data and never sends anything to the gateway or the NMEA 2000 bus. "
+                "This display and the gateway must be on the same WiFi network.</p>";
+        html += "</div>";
+        html += "<div style='text-align:center;margin-top:12px;'><button class='tab-btn' type='submit' style='padding:10px 18px;'>Save & Reboot</button></div>";
+        html += "</form>";
+    }
+
     html += "<p style='text-align:center; margin-top:10px;'><a href='/'>Back</a></p>";
 
     // JavaScript for WiFi scanning — two-phase: kick /scan-wifi then poll /scan-wifi-results
@@ -2524,23 +2581,67 @@ void handle_network_page() {
             "function pollN2k(){"
               "fetch('/n2k-stats').then(function(r){return r.json();}).then(function(d){"
                 "var el=document.getElementById('n2kstat');"
+                "var via=d.src==='wifi'?' via WiFi gateway':'';"
                 "if(d.pgns>0){"
                   "el.style.color='#4a4';el.style.fontWeight='bold';"
-                  "el.textContent='Active (' + d.pgns + ' PGNs received)';"
+                  "el.textContent='Active' + via + ' (' + d.pgns + ' PGNs received)';"
                 "}else{"
                   "el.style.color='#c80';el.style.fontWeight='normal';"
-                  "el.textContent='No data (bus connected?)';"
+                  "el.textContent=d.src==='wifi'?'No data yet':'No data (bus connected?)';"
+                "}"
+                "if(d.src==='wifi'){"
+                  "el.textContent+=' - ' + d.gw + (d.bad>0?' (' + d.bad + ' unreadable lines: check the format)':'');"
                 "}"
               "}).catch(function(){});"
               "setTimeout(pollN2k,2000);"
             "}"
             "pollN2k();"
+            "function n2kSrcChanged(){"
+              "document.getElementById('n2kgw').style.display=document.getElementById('n2ksrc').value==='wifi'?'block':'none';"
+              "document.getElementById('n2khostrow').style.display=document.getElementById('n2kproto').value==='tcp'?'':'none';"
+            "}"
+            "n2kSrcChanged();"
             "</script>";
 
     html += "</div></div></body></html>";
     config_server.send(200, "text/html", html);
 }
 
+
+void handle_save_n2k_source() {
+    if (config_server.method() != HTTP_POST) {
+        config_server.send(405, "text/plain", "Method Not Allowed");
+        return;
+    }
+    N2kGwSettings gw;
+    gw.use_wifi = config_server.arg("src") == "wifi";
+    gw.format = (uint8_t)constrain(config_server.arg("fmt").toInt(), N2KGW_FMT_YDRAW, N2KGW_FMT_SEASMART);
+    gw.udp = config_server.arg("proto") == "udp";
+    gw.host = config_server.arg("host");
+    gw.host.trim();
+    long port = config_server.arg("port").toInt();
+    gw.port = (port >= 1 && port <= 65535) ? (uint16_t)port : 0;
+
+    String problem;
+    if (gw.use_wifi && gw.port == 0) problem = "Please enter the gateway's port (1-65535).";
+    else if (gw.use_wifi && !gw.udp && gw.host.length() == 0) problem = "Please enter the gateway's IP address.";
+
+    String html = "<html><head>";
+    html += STYLE;
+    html += "<title>NMEA 2000 source</title></head><body><div class='container'>";
+    if (problem.length()) {
+        html += "<h2>Not saved</h2><p>" + problem + "</p><p><a href='/network'>Back</a></p></div></body></html>";
+        config_server.send(400, "text/html", html);
+        return;
+    }
+    n2k_gw_save(gw);
+    Serial.printf("[N2K-WiFi] Saved: source=%s fmt=%u %s %s:%u\n", gw.use_wifi ? "wifi" : "can",
+                  gw.format, gw.udp ? "UDP" : "TCP", gw.host.c_str(), gw.port);
+    html += "<h2>Settings saved.<br>Rebooting...</h2></div></body></html>";
+    config_server.send(200, "text/html", html);
+    delay(1000);
+    ESP.restart();
+}
 
 void handle_save_wifi() {
     if (config_server.method() == HTTP_POST) {
@@ -2912,9 +3013,17 @@ void setup_network() {
     config_server.on("/save-wifi", HTTP_POST, handle_save_wifi);
     config_server.on("/scan-wifi", HTTP_GET, handle_scan_wifi);
     config_server.on("/scan-wifi-results", HTTP_GET, handle_scan_wifi_results);
+    config_server.on("/save-n2k-source", HTTP_POST, handle_save_n2k_source);
     config_server.on("/n2k-stats", HTTP_GET, []() {
-        config_server.send(200, "application/json",
-            "{\"pgns\":" + String(get_n2k_msg_count()) + "}");
+        String json = "{\"pgns\":" + String(get_n2k_msg_count());
+        if (n2k_gw_enabled()) {
+            json += ",\"src\":\"wifi\",\"gw\":\"" + json_escape(n2k_gw_status()) + "\"";
+            json += ",\"bad\":" + String(n2k_gw_bad_lines());
+        } else {
+            json += ",\"src\":\"can\"";
+        }
+        json += "}";
+        config_server.send(200, "application/json", json);
     });
     config_server.on("/device", handle_device_page);
     config_server.on("/save-device", HTTP_POST, handle_save_device);

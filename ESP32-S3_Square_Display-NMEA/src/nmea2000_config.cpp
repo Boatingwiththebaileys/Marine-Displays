@@ -12,6 +12,7 @@
 
 #include "ais_display.h"            // ais_n2k_update_position/name
 #include "NMEA2000_esp32_twai.h"  // Our local TWAI driver for ESP32-S3
+#include "n2k_gateway.h"          // Optional: same data from a WiFi gateway (beta)
 #include <N2kMessages.h>
 #include <N2kMessagesEnumToStr.h>
 #include <freertos/FreeRTOS.h>
@@ -980,6 +981,14 @@ void enable_nmea2000() {
 
     init_sensor_mutex();
 
+    // WiFi gateway selected: don't open the CAN port, feed the same handler
+    // from the network instead.
+    if (n2k_gw_enabled()) {
+        n2k_running = true;
+        n2k_gw_start(handle_n2k_msg);
+        return;
+    }
+
     // Configure the NMEA2000 library
     NMEA2000.SetN2kCANMsgBufSize(8);      // 8-message TX buffer
     NMEA2000.SetN2kCANReceiveFrameBufSize(100); // 100 CAN frames RX buffer
@@ -1013,6 +1022,7 @@ void enable_nmea2000() {
 void disable_nmea2000() {
     if (!n2k_running) return;
     n2k_running = false;
+    n2k_gw_stop();
     if (n2k_task_handle) {
         vTaskDelay(pdMS_TO_TICKS(100));  // let task exit cleanly
         n2k_task_handle = nullptr;
