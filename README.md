@@ -38,3 +38,13 @@ https://youtu.be/d4MlVSbn_wI
 Video of the square display - DIY ESP32 Marine MFD – Square Multifunction Boat Display using SignalK Data https://youtu.be/FAPvdz6oN7A
 
 The Baileys
+
+---
+
+## Licence
+
+Free for personal, hobby and non-commercial use under the [PolyForm Noncommercial License 1.0.0](LICENSE.md). You're welcome to build these displays for your own boat, change the code and share it, as long as you keep the copyright notice. **Commercial use isn't allowed**: please don't sell displays running this firmware, build it into a product, or present it as your own work. If you'd like to use it commercially, get in touch.
+
+Third-party libraries keep their own licences; see [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
+
+These displays are hobby projects and come with no warranty. Always keep your boat's primary instruments as your main source of navigation and engine information.
