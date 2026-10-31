@@ -30,6 +30,8 @@ extern "C" {
 void ui_Settings_screen_init(void);
 void update_ip_address(void);
 void trigger_buzzer_alert(void);
+void buzzer_alert_service(void);
+bool buzzer_alert_busy(void);
 void apply_night_mode_overlay(bool enable);
 void apply_brightness_from_slider(uint8_t slider_pos);
 

@@ -1224,6 +1224,7 @@ void setup() {
 }
 
 void loop() {
+    buzzer_alert_service();
     config_server.handleClient();
     poll_wifi_scan();   // collect background WiFi scan results without blocking
 
@@ -1676,7 +1677,10 @@ void loop() {
     // Buzzer safety maintenance — V3 every 200 ms, V4 every 30 s.
     // V4: With Waveshare setup (dir=0xFF, all outputs), buzzer is controlled
     // via output register bit 6 (BEE_EN).  Periodically ensure it's LOW.
-    {
+    // Skipped while a beep pattern owns the pin. This path forces it off,
+    // which would clip the 200 ms on-pulse.
+    buzzer_alert_service();
+    if (!buzzer_alert_busy()) {
         static unsigned long last_buz_maintain = 0;
         unsigned long now_m = millis();
         if (is_board_v4()) {
