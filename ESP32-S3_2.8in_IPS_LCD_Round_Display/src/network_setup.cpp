@@ -1505,6 +1505,10 @@ void setup_network() {
         tries++;
     }
     if (WiFi.status() == WL_CONNECTED) {
+        // Keep the radio awake (no modem sleep), as on the other displays:
+        // with power saving on, pings, the web page and Signal K data are
+        // delayed or dropped.
+        WiFi.setSleep(false);
         Serial.println("\nWiFi connected!");
         Serial.print("IP: ");
         Serial.println(WiFi.localIP());

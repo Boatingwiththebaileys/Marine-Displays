@@ -234,11 +234,10 @@ void Lvgl_Touchpad_Read( lv_indev_drv_t * indev_drv, lv_indev_data_t * data )
     g_last_activity_ms = millis();
 
     if (g_screen_is_off) {
-      // Wake: restore backlight and disable WiFi modem sleep.
+      // Wake: restore backlight.
       // Swallow this touch so it doesn't trigger a UI action.
       g_screen_is_off = false;
       Set_Backlight(LCD_Backlight);
-      WiFi.setSleep(false);
       Serial.println("[SCREEN] Wake on touch — screen on");
       data->state = LV_INDEV_STATE_REL;
       return;
