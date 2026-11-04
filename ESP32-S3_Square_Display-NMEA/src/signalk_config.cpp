@@ -1,7 +1,6 @@
 #include "signalk_config.h"
 #include "network_setup.h"
 #include "screen_config_c_api.h"
-#include "nmea2000_config.h"
 #include <WiFi.h>
 #include <esp_wifi.h>
 #include <esp_system.h>
@@ -116,24 +115,6 @@ void set_sensor_value(int index, float value) {
 }
 
 // Metadata getters (thread-safe)
-// Name and unit straight from the NMEA 2000 field table, so labels show
-// before any data has arrived (and for fields that are also on a gauge,
-// whose slots never get metadata of their own).
-static String n2k_default_description(const String& path) {
-    N2kField f = n2k_field_from_stored(path);
-    if (f == N2K_NONE) return "";
-    String lbl = String(n2k_field_label(f));
-    int bracket = lbl.lastIndexOf(" [");
-    if (bracket > 0) lbl = lbl.substring(0, bracket);
-    return lbl;
-}
-
-static String n2k_default_unit(const String& path) {
-    N2kField f = n2k_field_from_stored(path);
-    if (f == N2K_NONE) return "";
-    return String(n2k_field_unit(f));
-}
-
 String get_sensor_unit(int index) {
     if (index < 0 || index >= TOTAL_PARAMS) return "";
     String unit = "";
@@ -141,7 +122,6 @@ String get_sensor_unit(int index) {
         unit = g_sensor_units[index];
         xSemaphoreGive(sensor_mutex);
     }
-    if (unit.length() == 0) unit = n2k_default_unit(signalk_paths[index]);
     return unit;
 }
 
@@ -152,7 +132,6 @@ String get_sensor_description(int index) {
         desc = g_sensor_descriptions[index];
         xSemaphoreGive(sensor_mutex);
     }
-    if (desc.length() == 0) desc = n2k_default_description(signalk_paths[index]);
     return desc;
 }
 
@@ -238,11 +217,10 @@ String get_sensor_unit_by_path(const String& path) {
         auto it = extended_sensor_units.find(path);
         String unit = (it != extended_sensor_units.end()) ? it->second : "";
         xSemaphoreGive(sensor_mutex);
-        if (unit.length() == 0) unit = n2k_default_unit(path);
         return unit;
     }
     
-    return n2k_default_unit(path);
+    return "";
 }
 
 // Get sensor description by path
@@ -261,11 +239,10 @@ String get_sensor_description_by_path(const String& path) {
         auto it = extended_sensor_descriptions.find(path);
         String desc = (it != extended_sensor_descriptions.end()) ? it->second : "";
         xSemaphoreGive(sensor_mutex);
-        if (desc.length() == 0) desc = n2k_default_description(path);
         return desc;
     }
     
-    return n2k_default_description(path);
+    return "";
 }
 
 // -- Metadata stubs (no SignalK REST API in NMEA mode) --
