@@ -100,11 +100,21 @@ jobs:
       - name: Collect firmware from releases
         run: |
           set -euo pipefail
+          # Installer flashes separate parts, not the full image: the full image's
+          # 0xFF padding would wipe the NVS settings even with Erase unticked.
+          split_all() {
+            for m in "$1"/manifest-*.json; do
+              bin=$(python3 -c "import json,sys;print(json.load(open(sys.argv[1]))['builds'][0]['parts'][0]['path'])" "$m")
+              python3 tools/split_installer_image.py "$1/$bin" "$m"
+            done
+          }
+
           STABLE=$(gh release view --json tagName -q .tagName)
           STABLE_AT=$(gh release view "$STABLE" --json publishedAt -q .publishedAt)
           echo "Stable: $STABLE ($STABLE_AT)"
           gh release download "$STABLE" --pattern 'marine-display-*.bin' --dir docs   # installer images only, not ota-*
           sed -i "s/\"version\": \"dev\"/\"version\": \"$STABLE\"/" docs/manifest-*.json
+          split_all docs
 
           # Newest pre-release, shown only while it's newer than the stable release
           read -r BETA BETA_AT < <(gh release list --limit 50 --json tagName,isPrerelease,publishedAt \
@@ -116,11 +126,13 @@ jobs:
               gh release download "$BETA" --pattern "$bin" --dir docs/beta
             done
             sed -i "s/\"version\": \"dev\"/\"version\": \"$BETA\"/" docs/beta/manifest-*.json
+            split_all docs/beta
           else
             echo "No current beta"
             rm -rf docs/beta
           fi
-          find docs -name '*.bin' -o -name 'manifest-*.json' | sort
+          find docs -name '*.bin' | sort
+          cat docs/manifest-square.json
       - uses: actions/upload-pages-artifact@v3
         with:
           path: docs

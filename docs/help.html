@@ -311,7 +311,7 @@
         <a href="https://github.com/Boatingwiththebaileys/Marine-Displays/releases">GitHub releases</a>. It's the one whose name starts with <code>ota-</code>, for example
         <code>ota-marine-display-square.bin</code>. Upload it on the Firmware Update page, and the display restarts on the new version.</li>
     </ul>
-    <div class="warn"><b>Use the ota- file on the Firmware Update page</b>The files without <code>ota-</code> are complete installer images for USB. The Firmware Update page refuses them, and refuses firmware meant for a different display model, so nothing is changed if you pick the wrong file. Update files are included from the first release after v1.0.1; displays on v1.0.1 or earlier should update once with the installer.</div>
+    <div class="warn"><b>Use the ota- file on the Firmware Update page</b>The files without <code>ota-</code> are complete images for a fresh install over USB (flashing one by hand with esptool replaces the display's saved settings; the installer doesn't). The Firmware Update page refuses them, and refuses firmware meant for a different display model, so nothing is changed if you pick the wrong file. Update files are included from the first release after v1.0.1; displays on v1.0.1 or earlier should update once with the installer.</div>
     <h3>Backups</h3>
     <ul>
       <li>On the Square displays, screen settings are also saved to the SD card (<code>config</code> folder) and loaded from there first. Erasing the display won't lose your screens while that card is in.</li>
