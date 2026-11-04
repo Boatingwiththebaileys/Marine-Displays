@@ -1,0 +1,340 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Marine Displays help</title>
+<meta name="description" content="How to install, set up and get the most from Boating with the Baileys Marine Displays.">
+<style>
+  :root {
+    --sea: #10202e;
+    --panel: #0a151f;
+    --line: #22384a;
+    --ink: #dbe6ee;
+    --dim: #8fa3b3;
+    --accent: #5fb4e6;
+    --warn: #e6a948;
+    --tip: #4fb38a;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0; background: var(--sea); color: var(--ink);
+    font: 16px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  main { width: min(100% - 32px, 860px); margin: 40px auto 60px; }
+  h1 { font-size: 28px; margin: 0 0 6px; }
+  h2 { font-size: 21px; margin: 0 0 12px; scroll-margin-top: 16px; }
+  h3 { font-size: 16px; margin: 22px 0 8px; }
+  p { margin: 0 0 12px; }
+  p.lede { color: var(--dim); margin-bottom: 24px; }
+  a { color: var(--accent); }
+  section {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+    padding: 20px 22px; margin-bottom: 18px;
+  }
+  ul, ol { margin: 0 0 12px; padding-left: 1.3em; }
+  li { margin-bottom: 4px; }
+  li::marker { color: var(--dim); }
+  code { background: #142433; padding: 1px 5px; border-radius: 4px; font-size: 14px; overflow-wrap: anywhere; }
+  .table-wrap { overflow-x: auto; margin: 0 0 12px; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--dim); font-weight: 500; }
+  .tip, .warn {
+    border-left: 4px solid var(--tip); background: rgb(79 179 138 / .08);
+    padding: 10px 14px; border-radius: 0 8px 8px 0; margin: 0 0 12px;
+  }
+  .warn { border-left-color: var(--warn); background: rgb(230 169 72 / .08); }
+  .tip > b:first-child, .warn > b:first-child { display: block; margin-bottom: 2px; }
+  nav.toc { columns: 2 220px; font-size: 15px; }
+  nav.toc a { display: block; padding: 3px 0; text-decoration: none; }
+  nav.toc a:hover { text-decoration: underline; }
+  .small { font-size: 14px; color: var(--dim); }
+  .top { font-size: 13px; float: right; text-decoration: none; }
+</style>
+</head>
+<body>
+<main>
+  <p class="small"><a href="./">← Back to the installer</a></p>
+  <h1>Marine Displays help</h1>
+  <p class="lede">How to install, set up and get the most from your Boating with the Baileys display.
+    Covers the 4" Square (Signal K and NMEA 2000), 2.8" and 2.1" Round, and 4.2" RLCD displays.</p>
+
+  <section>
+    <h2>Contents</h2>
+    <nav class="toc">
+      <a href="#need">1. What you need</a>
+      <a href="#install">2. Install the firmware</a>
+      <a href="#first">3. First-time setup</a>
+      <a href="#find">4. Finding your display</a>
+      <a href="#using">5. Using the display</a>
+      <a href="#web">6. The display's web page</a>
+      <a href="#screens">7. Setting up screens</a>
+      <a href="#paths">8. Signal K paths</a>
+      <a href="#gauges">9. Gauges, zones and alarms</a>
+      <a href="#sd">10. SD card, icons and backgrounds</a>
+      <a href="#device">11. Brightness, units and sleep</a>
+      <a href="#nmea">12. NMEA 2000 display</a>
+      <a href="#update">13. Updating and backups</a>
+      <a href="#trouble">14. Troubleshooting</a>
+    </nav>
+  </section>
+
+  <section id="need">
+    <a class="top" href="#">↑ Top</a>
+    <h2>1. What you need</h2>
+    <ul>
+      <li>One of the supported Waveshare ESP32-S3 displays (see the <a href="./">installer</a> for the exact boards).</li>
+      <li>A USB-C <b>data</b> cable. Some cables only carry power; if your computer can't see the display, try another cable.</li>
+      <li>A computer with <b>Chrome or Edge</b> for installing. Safari and Firefox can't install firmware.</li>
+      <li>A data source: a <b>Signal K server</b> on the boat's WiFi (for example on a Raspberry Pi or Victron Cerbo), or for the NMEA 2000 display, the boat's <b>NMEA 2000 network</b>.</li>
+      <li>Optional but recommended: a <b>microSD card, 8–32 GB, formatted FAT32</b>, for your own icons and background images. See <a href="#sd">SD card</a>.</li>
+    </ul>
+  </section>
+
+  <section id="install">
+    <a class="top" href="#">↑ Top</a>
+    <h2>2. Install the firmware</h2>
+    <ol>
+      <li>Open the <a href="./">installer</a> in Chrome or Edge.</li>
+      <li>Plug the display into the computer.</li>
+      <li>Click <b>Connect</b> on the card for your display, choose the port that appears, then <b>Install</b>. It takes about a minute.</li>
+    </ol>
+    <p>On a brand-new display, tick <b>Erase device</b>. When updating a display you've already set up, leave it <b>unticked</b> so your settings are kept.</p>
+    <div class="tip"><b>Tip</b>If no port appears, hold the <b>BOOT</b> button on the board while plugging the cable in, then click Connect again.</div>
+  </section>
+
+  <section id="first">
+    <a class="top" href="#">↑ Top</a>
+    <h2>3. First-time setup</h2>
+    <p>Until it knows your boat's WiFi, the display starts its own WiFi network so you can set it up:</p>
+    <div class="table-wrap"><table>
+      <tr><th>Display</th><th>Setup WiFi network</th><th>Password</th></tr>
+      <tr><td>4" Square (Signal K and NMEA 2000)</td><td><code>ESP32-SquareDisplay</code></td><td><code>12345678</code></td></tr>
+      <tr><td>2.8" and 2.1" Round</td><td><code>ESP32-RoundDisplay</code></td><td><code>12345678</code></td></tr>
+      <tr><td>4.2" RLCD</td><td><code>ESP32-RLCDDisplay</code></td><td><code>12345678</code></td></tr>
+    </table></div>
+    <ol>
+      <li>On your phone or laptop, join that network.</li>
+      <li>Open a browser and go to <code>http://192.168.4.1</code>.</li>
+      <li>Open <b>Network Setup</b>. Use <b>Scan</b> to pick your boat's WiFi, and enter its password.</li>
+      <li>For Signal K displays, enter the <b>Signal K server</b> IP address and port. The port is usually <code>3000</code>; check your server's settings.</li>
+      <li>Give the display a <b>hostname</b> you'll recognise, such as <code>helm-square</code>.</li>
+      <li>Click <b>Save &amp; Reboot</b>. The display restarts and joins your WiFi.</li>
+    </ol>
+    <div class="tip"><b>Tip</b>Give the Signal K server a fixed IP address in your router (often called a "DHCP reservation") so the display can always find it.</div>
+  </section>
+
+  <section id="find">
+    <a class="top" href="#">↑ Top</a>
+    <h2>4. Finding your display on the boat's WiFi</h2>
+    <p>After setup, the display's web page is at its own IP address on your boat's network. To find it:</p>
+    <ul>
+      <li><b>Touchscreen displays:</b> swipe <b>down</b> on the screen to open the Settings panel, which shows the IP address and WiFi signal.</li>
+      <li>Try <code>http://<i>hostname</i>.local</code>, using the hostname you set (works on most phones and computers).</li>
+      <li>Look for the hostname in your router's list of connected devices.</li>
+    </ul>
+    <div class="tip"><b>Tip</b>Bookmark each display's page on your phone. With several displays, a hostname that says where it's fitted (<code>nav-station</code>, <code>helm</code>) saves guesswork.</div>
+  </section>
+
+  <section id="using">
+    <a class="top" href="#">↑ Top</a>
+    <h2>5. Using the display</h2>
+    <p>Each display has <b>5 screens</b> you can set up however you like.</p>
+    <h3>Touchscreen displays (Square and Round)</h3>
+    <ul>
+      <li><b>Swipe left / right</b> to move between screens.</li>
+      <li><b>Swipe down</b> to open the Settings panel: IP address, WiFi signal, buzzer, auto-scroll and (on the Square) screen sleep and brightness.</li>
+      <li><b>Swipe up</b> to close the Settings panel.</li>
+    </ul>
+    <h3>4.2" RLCD</h3>
+    <p>The RLCD has no touchscreen. Choose which screen it shows from the <b>Screens</b> buttons on its web page, or turn on <b>Auto-scroll</b> to cycle through them.</p>
+    <div class="tip"><b>Tip</b>Auto-scroll (5–60 seconds) turns a single display into a rotating dashboard, which is handy where nobody can reach the screen.</div>
+  </section>
+
+  <section id="web">
+    <a class="top" href="#">↑ Top</a>
+    <h2>6. The display's web page</h2>
+    <p>Everything is set up from the display's own web page. The home page shows its status and the screen selector, with links to the pages below. Not every model has every page.</p>
+    <div class="table-wrap"><table>
+      <tr><th>Page</th><th>What it's for</th></tr>
+      <tr><td><b>Gauges / Screen Config</b></td><td>What each of the 5 screens shows: display type, data, colours, icons, alarm zones.</td></tr>
+      <tr><td><b>Needle Styles</b></td><td>Needle colour, width, length and position for gauge screens.</td></tr>
+      <tr><td><b>Assets</b></td><td>Upload, download and delete icon images on the SD card.</td></tr>
+      <tr><td><b>Network Setup</b></td><td>WiFi, Signal K server, hostname, and on the NMEA display the data source.</td></tr>
+      <tr><td><b>Device Settings</b></td><td>Brightness, buzzer, auto-scroll, screen sleep and units.</td></tr>
+      <tr><td><b>Firmware Update</b></td><td>Not for installer files. See <a href="#update">Updating</a>.</td></tr>
+    </table></div>
+  </section>
+
+  <section id="screens">
+    <a class="top" href="#">↑ Top</a>
+    <h2>7. Setting up screens</h2>
+    <p>On the configuration page, pick a screen (1–5), choose a <b>Display Type</b>, fill in its settings and save. Display types by model:</p>
+    <div class="table-wrap"><table>
+      <tr><th>Display type</th><th>What it shows</th><th>Square</th><th>Round</th><th>RLCD</th></tr>
+      <tr><td>Gauge</td><td>One or two needle gauges over a background, with icons that change colour on alarm</td><td>✓</td><td>✓</td><td>✓</td></tr>
+      <tr><td>Gauge + Number</td><td>Gauge with a large number in the middle (wind-instrument style)</td><td>✓</td><td>✓</td><td></td></tr>
+      <tr><td>Number</td><td>One big value with low/high alarms</td><td>✓</td><td></td><td>✓</td></tr>
+      <tr><td>Dual / Quad</td><td>Two or four values on one screen</td><td>✓</td><td></td><td>✓</td></tr>
+      <tr><td>Graph</td><td>Line or bar chart over 1–30 minutes, with an optional second value</td><td>✓</td><td></td><td>✓</td></tr>
+      <tr><td>Compass</td><td>Heading, with extra data fields</td><td>✓</td><td></td><td>✓</td></tr>
+      <tr><td>Position</td><td>Latitude/longitude and time</td><td>✓</td><td></td><td>✓</td></tr>
+      <tr><td>AIS</td><td>AIS radar of nearby vessels</td><td>✓</td><td></td><td></td></tr>
+      <tr><td>Anchor Alarm</td><td>Anchor watch with alarm radius</td><td>✓</td><td></td><td></td></tr>
+      <tr><td>Attitude</td><td>Heel and pitch (NMEA 2000 display)</td><td>✓</td><td></td><td></td></tr>
+    </table></div>
+    <div class="tip"><b>Tip: one job per screen</b>Put the things you glance at most (depth, speed, wind) on screen 1, and engine data together on one screen. Use Dual or Quad when you need several values at once, and a big Number display for anything you read from across the cockpit.</div>
+    <div class="tip"><b>Tip: use the Test button</b>On gauge screens, turn on <b>Test Mode</b> and use <b>Test</b> next to each calibration point to move the needle there. It's the quickest way to line the needle up with your background.</div>
+  </section>
+
+  <section id="paths">
+    <a class="top" href="#">↑ Top</a>
+    <h2>8. Signal K paths</h2>
+    <p>Each value comes from a Signal K <b>path</b>. The path must match your server exactly, including the engine or battery name in the middle. Some common ones:</p>
+    <div class="table-wrap"><table>
+      <tr><th>Data</th><th>Typical Signal K path</th></tr>
+      <tr><td>Depth</td><td><code>environment.depth.belowTransducer</code> or <code>…belowKeel</code></td></tr>
+      <tr><td>Speed over ground</td><td><code>navigation.speedOverGround</code></td></tr>
+      <tr><td>Speed through water</td><td><code>navigation.speedThroughWater</code></td></tr>
+      <tr><td>Heading</td><td><code>navigation.headingMagnetic</code> or <code>navigation.headingTrue</code></td></tr>
+      <tr><td>Apparent wind speed / angle</td><td><code>environment.wind.speedApparent</code>, <code>environment.wind.angleApparent</code></td></tr>
+      <tr><td>Water temperature</td><td><code>environment.water.temperature</code></td></tr>
+      <tr><td>Engine RPM</td><td><code>propulsion.<i>port</i>.revolutions</code></td></tr>
+      <tr><td>Coolant temperature</td><td><code>propulsion.<i>port</i>.temperature</code></td></tr>
+      <tr><td>Oil pressure</td><td><code>propulsion.<i>port</i>.oilPressure</code></td></tr>
+      <tr><td>Battery voltage</td><td><code>electrical.batteries.<i>house</i>.voltage</code></td></tr>
+      <tr><td>Fuel tank level</td><td><code>tanks.fuel.<i>0</i>.currentLevel</code></td></tr>
+    </table></div>
+    <p class="small">Words in <i>italics</i> vary from boat to boat.</p>
+    <div class="tip"><b>Tip: copy paths from your server</b>In the Signal K server's admin page, open <b>Data Browser</b>. It lists every path your boat is sending, spelled exactly as the display needs it. Copy and paste rather than typing.</div>
+  </section>
+
+  <section id="gauges">
+    <a class="top" href="#">↑ Top</a>
+    <h2>9. Gauges, zones and alarms</h2>
+    <h3>Calibration points</h3>
+    <p>Each gauge has 5 calibration points, each pairing a <b>value</b> with a needle <b>angle</b>. The needle moves smoothly between them, so you can match backgrounds that aren't evenly spaced.</p>
+    <div class="warn"><b>Gauge values use raw data units</b>Calibration points and alarm zones work on the raw value from the data source, not the units chosen in Device Settings. On Signal K displays these are Signal K's base units:
+      <ul style="margin:8px 0 0">
+        <li>RPM is <b>revolutions per second</b>: 3000 RPM = <code>50</code></li>
+        <li>Temperatures are <b>Kelvin</b>: 90 °C = <code>363.15</code></li>
+        <li>Pressures are <b>Pascals</b>: 4 bar = <code>400000</code></li>
+        <li>Tank levels are <b>0 to 1</b>: half full = <code>0.5</code></li>
+        <li>Speeds are <b>metres per second</b>: 10 knots ≈ <code>5.14</code></li>
+      </ul>
+      <p style="margin:8px 0 0">On the NMEA 2000 display, RPM is plain RPM, but temperatures and pressures are still Kelvin and Pascals. Number, Dual and Quad displays convert values for you automatically.</p></div>
+    <h3>Zones and alerts</h3>
+    <p>Each gauge has up to 4 <b>zones</b>, each a <b>Min</b>–<b>Max</b> range with a <b>Color</b>. When the value is in a zone, the gauge's icon turns that colour (tick <b>Transparent</b> to show the icon in its own colours instead). Tick <b>Buzzer</b> on a zone to sound the buzzer while the value is in it. A typical coolant gauge has a normal zone, a warm zone in amber, and an overheat zone in red with the buzzer on.</p>
+    <div class="tip"><b>Tip: overlapping zones</b>If zones overlap, the <b>narrowest</b> one wins. So you can set a wide "normal" zone across the whole scale, then a narrow red zone at the top for the alarm, without worrying about exact boundaries.</div>
+    <p>Number displays have simpler <b>Low</b> and <b>High</b> alarm values.</p>
+    <h3>Buzzer</h3>
+    <ul>
+      <li><b>Off</b>: no sound.</li>
+      <li><b>Global</b>: alarms on any screen sound the buzzer.</li>
+      <li><b>Per-screen</b>: only the screen being shown can sound it.</li>
+    </ul>
+    <p><b>Buzzer cooldown</b> sets how long it waits between beeps: constant, or a 5–60 second pause.</p>
+    <div class="tip"><b>Tip</b>Use white or light-grey PNG icons. The zone colours are applied to the icon, so a white icon shows green, amber and red clearly.</div>
+  </section>
+
+  <section id="sd">
+    <a class="top" href="#">↑ Top</a>
+    <h2>10. SD card, icons and backgrounds</h2>
+    <h3>The card</h3>
+    <ul>
+      <li>Use a <b>microSD card of 8–32 GB</b>. These come formatted <b>FAT32</b>, which is what the display needs.</li>
+      <li><b>exFAT doesn't work.</b> Cards of 64 GB and above usually come as exFAT and need reformatting to FAT32. On a Mac, use Disk Utility → Erase → <b>MS-DOS (FAT)</b>. Windows' own formatter can't do FAT32 above 32 GB, so you'll need a FAT32 formatting tool. A card in the wrong format is simply ignored; it is never erased.</li>
+      <li>Large cards also make the Round displays slower to start, because they check the card's free space at boot.</li>
+    </ul>
+    <h3>Folders</h3>
+    <ul>
+      <li>Put icons and backgrounds in a folder called <code>assets</code> at the top of the card.</li>
+      <li>The Square displays also keep a backup of your screen settings in a <code>config</code> folder. See <a href="#update">Backups</a>.</li>
+    </ul>
+    <h3>Icons</h3>
+    <ul>
+      <li><b>PNG</b> files, <b>70 × 70</b> pixels, ideally white on a transparent background so zone colours show well.</li>
+      <li>Upload them on the <b>Assets</b> page, or copy them into <code>assets</code> with a card reader.</li>
+    </ul>
+    <h3>Backgrounds</h3>
+    <ul>
+      <li>The same size as the screen: <b>480 × 480</b> on the Square and Round displays.</li>
+      <li>Saved as a raw <b>RGB565 <code>.bin</code></b> file. Design the background as a PNG, then convert it with the <code>convert_png_to_rgb565.py</code> script in the display's folder on GitHub:<br><code>python3 convert_png_to_rgb565.py my_background.png my_background.bin</code></li>
+      <li>Copy the <code>.bin</code> into <code>assets</code> with a card reader.</li>
+    </ul>
+    <div class="tip"><b>Tip: start from the examples</b>The <a href="https://github.com/Boatingwiththebaileys/Marine-Displays/tree/main/assets">assets folder on GitHub</a> has ready-made backgrounds (rev counter, temperatures, depth, wind, batteries and more) and icons. Copy them onto your card to get going, then design your own.</div>
+    <div class="tip"><b>Tip: line up gauges</b>When designing a gauge background, note the angle of each scale mark. Those angles go straight into the calibration points.</div>
+  </section>
+
+  <section id="device">
+    <a class="top" href="#">↑ Top</a>
+    <h2>11. Brightness, units and sleep</h2>
+    <p>On <b>Device Settings</b> (and partly on the touchscreen Settings panel):</p>
+    <ul>
+      <li><b>Brightness</b>: turn it down at night to protect night vision.</li>
+      <li><b>Screen sleep</b> (Square): always on, or off after 1–30 minutes.</li>
+      <li><b>Auto-scroll</b>: off, or move to the next screen every 5–60 seconds.</li>
+      <li><b>Units</b>: how Number, Dual and Quad displays show values:</li>
+    </ul>
+    <div class="table-wrap"><table>
+      <tr><th>Units setting</th><th>Speed</th><th>Distance</th><th>Depth</th><th>Temperature</th><th>Volume</th><th>Pressure</th></tr>
+      <tr><td>Metric</td><td>km/h</td><td>km</td><td>m</td><td>°C</td><td>L</td><td>bar</td></tr>
+      <tr><td>Imperial US</td><td>mph</td><td>mi</td><td>ft</td><td>°F</td><td>US gal</td><td>PSI</td></tr>
+      <tr><td>Imperial UK</td><td>mph</td><td>mi</td><td>ft</td><td>°C</td><td>UK gal</td><td>PSI</td></tr>
+      <tr><td>Nautical Metric</td><td>kn</td><td>nm</td><td>m</td><td>°C</td><td>L</td><td>bar</td></tr>
+      <tr><td>Nautical Imperial US</td><td>kn</td><td>nm</td><td>ft</td><td>°F</td><td>US gal</td><td>PSI</td></tr>
+      <tr><td>Nautical Imperial UK</td><td>kn</td><td>nm</td><td>ft</td><td>°C</td><td>UK gal</td><td>PSI</td></tr>
+    </table></div>
+  </section>
+
+  <section id="nmea">
+    <a class="top" href="#">↑ Top</a>
+    <h2>12. NMEA 2000 display</h2>
+    <p>The NMEA 2000 version of the 4" Square reads data straight from the boat's NMEA 2000 network, so no Signal K server is needed. Instead of typing Signal K paths, choose each value from a list of NMEA 2000 fields (engine, depth, wind, GPS, AIS, batteries and more).</p>
+    <ul>
+      <li><b>Network Setup</b> shows a live count of NMEA 2000 messages received, which is a quick check that the bus is connected.</li>
+      <li>The display only listens; it never sends anything onto the NMEA 2000 bus.</li>
+      <li>The <b>beta</b> version can also take its data from a <b>WiFi gateway</b> (Yacht Devices, Actisense or SeaSmart) instead of a cable. See the Beta section of the <a href="./">installer</a> and <b>Network Setup → NMEA 2000 data source</b>.</li>
+    </ul>
+  </section>
+
+  <section id="update">
+    <a class="top" href="#">↑ Top</a>
+    <h2>13. Updating and backups</h2>
+    <h3>Updating</h3>
+    <p>Use the <a href="./">installer</a> with <b>Erase device unticked</b>. Your WiFi, screens and settings are kept.</p>
+    <div class="warn"><b>Don't use installer files on the Firmware Update page</b>The <code>.bin</code> files from the installer and the GitHub releases are complete flash images for USB installing. Don't upload them on the display's own <b>Firmware Update</b> page.</div>
+    <h3>Backups</h3>
+    <ul>
+      <li>On the Square displays, screen settings are also saved to the SD card (<code>config</code> folder) and loaded from there first. Erasing the display won't lose your screens while that card is in.</li>
+      <li>To start the screens completely fresh, delete the <code>config</code> folder from the card as well as installing with <b>Erase device</b> ticked.</li>
+      <li>Keep a copy of your <code>assets</code> and <code>config</code> folders on your computer.</li>
+    </ul>
+  </section>
+
+  <section id="trouble">
+    <a class="top" href="#">↑ Top</a>
+    <h2>14. Troubleshooting</h2>
+    <div class="table-wrap"><table>
+      <tr><th>Problem</th><th>Try this</th></tr>
+      <tr><td>Installer shows no port</td><td>Use a different USB-C cable (some are power-only). Hold <b>BOOT</b> while plugging in. On Windows you may need the USB-serial driver for the board.</td></tr>
+      <tr><td>Screen blank after installing</td><td>Unplug and plug back in.</td></tr>
+      <tr><td>Can't see the setup WiFi network</td><td>It only appears when the display can't join a saved WiFi network, so give it a minute after power-on. If it had joined another network, use that network to reach its page.</td></tr>
+      <tr><td>No data on screen</td><td>Check the Signal K server IP and port on Network Setup, and that the display and server are on the same WiFi. Copy paths from the server's Data Browser, since a single wrong letter means no data.</td></tr>
+      <tr><td>Needle stuck at the end of the gauge</td><td>The calibration values are probably in the wrong units. See <a href="#gauges">Gauge values use raw data units</a>.</td></tr>
+      <tr><td>Icons or backgrounds missing from the lists</td><td>Check the card is FAT32 (not exFAT), the folder is named <code>assets</code> at the top of the card, icons are <code>.png</code> and backgrounds are <code>.bin</code>.</td></tr>
+      <tr><td>Forgot the display's address</td><td>Swipe down on the screen to see the IP address, or try <code>http://<i>hostname</i>.local</code>.</td></tr>
+      <tr><td>NMEA 2000 display shows "No data"</td><td>Check the NMEA 2000 connection and that the network is powered.</td></tr>
+    </table></div>
+    <p>Still stuck? <a href="https://github.com/Boatingwiththebaileys/Marine-Displays/issues">Open an issue on GitHub</a>, saying which display you have and what you've tried.</p>
+  </section>
+
+  <p class="small">These displays are hobby projects and come with no warranty. Always keep your boat's primary instruments as your main source of navigation and engine information.
+    Free for personal and non-commercial use under the
+    <a href="https://github.com/Boatingwiththebaileys/Marine-Displays/blob/main/LICENSE.md">PolyForm Noncommercial License 1.0.0</a>.
+    © 2026 Boating with the Baileys.</p>
+</main>
+</body>
+</html>
