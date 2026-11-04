@@ -802,6 +802,9 @@ void handle_gauges_page() {
     html += STYLE;
     html += "<title>Gauge Calibration</title></head><body><div class='container'>";
     html += "<h2>Gauge Calibration</h2>";
+    html += "<p style='background:#fff7e0;border:1px solid #e6c36a;border-radius:6px;padding:8px 10px;margin:8px 0'>"
+            "Live data on the display is paused while this page is open, to leave the display enough memory. "
+            "It resumes about 10 seconds after you close the page or switch to another tab.</p>";
 
     // Test mode toggle — AJAX, no full page reload
     html += "<div style='margin-bottom:16px;text-align:center;'>";
@@ -993,7 +996,9 @@ void handle_gauges_page() {
     html += "}\n";
 
     // Keepalive: ping every 8s so the 60s idle watchdog doesn't resume WS
-    html += "setInterval(function(){fetch('/gauges/ping').catch(function(){});},8000);\n";
+    // Only a visible tab keeps Signal K paused: a forgotten background tab
+    // (or a phone with the page left open) mustn't stop the display's data.
+    html += "setInterval(function(){if(document.visibilityState==='visible')fetch('/gauges/ping').catch(function(){});},8000);\n";
 
     // Load first tab on page load
     html += "document.addEventListener('DOMContentLoaded',function(){\n";
