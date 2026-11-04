@@ -2,8 +2,9 @@
 """
 Merge a PlatformIO ESP32-S3 build into one .bin that flashes at offset 0.
 
-The web installer (docs/) and anyone using esptool by hand can write this
-single file instead of four separate images. Offsets for otadata and the
+The release attaches this as marine-display-*.bin for a fresh install with
+esptool (it covers NVS with 0xFF, so it resets saved settings). The web installer
+flashes the parts instead; see split_installer_image.py. Offsets for otadata and the
 first app partition are read from the project's partitions.csv, so the
 image always matches the layout the firmware expects.
 

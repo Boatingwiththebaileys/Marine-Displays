@@ -2,7 +2,7 @@
 
 **[Install from your browser →](https://boatingwiththebaileys.github.io/Marine-Displays/)**
 
-Plug your display into a computer with a USB-C data cable, open the link above in Chrome or Edge, pick your screen and click **Install**. Ready-built `.bin` files for each display are also attached to every [release](https://github.com/Boatingwiththebaileys/Marine-Displays/releases), flashable at offset `0x0` with esptool.
+Plug your display into a computer with a USB-C data cable, open the link above in Chrome or Edge, pick your screen and click **Install**. Ready-built `.bin` files for each display are also attached to every [release](https://github.com/Boatingwiththebaileys/Marine-Displays/releases): `marine-display-*.bin` is a complete image for a fresh install at offset `0x0` with esptool (it replaces the display's saved settings), and `ota-marine-display-*.bin` is an update for the display's own Firmware Update page.
 
 **[Help and setup guide →](https://boatingwiththebaileys.github.io/Marine-Displays/help.html)**: setting up screens, Signal K paths, gauges and alarms, SD cards, icons and backgrounds, and troubleshooting.
 
