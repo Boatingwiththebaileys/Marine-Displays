@@ -38,11 +38,13 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { dir: ESP32-S3_Square_Display,              env: waveshare_square,   out: marine-display-square }
-          - { dir: ESP32-S3_Square_Display-NMEA,         env: waveshare_square,   out: marine-display-square-nmea }
-          - { dir: ESP32-S3_2.8in_IPS_LCD_Round_Display, env: waveshare_28_round, out: marine-display-round-28 }
-          - { dir: ESP32-S3_2.1in_IPS_LCD_Round_Display, env: waveshare_21_round, out: marine-display-round-21 }
-          - { dir: ESP32-S3_RLCD_4.2_Display,            env: waveshare_rlcd,     out: marine-display-rlcd-42 }
+          # ota: also publish the app-only update file for the display's own
+          # Firmware Update page (only displays that have that page)
+          - { dir: ESP32-S3_Square_Display,              env: waveshare_square,   out: marine-display-square,      ota: true }
+          - { dir: ESP32-S3_Square_Display-NMEA,         env: waveshare_square,   out: marine-display-square-nmea, ota: true }
+          - { dir: ESP32-S3_2.8in_IPS_LCD_Round_Display, env: waveshare_28_round, out: marine-display-round-28,    ota: false }
+          - { dir: ESP32-S3_2.1in_IPS_LCD_Round_Display, env: waveshare_21_round, out: marine-display-round-21,    ota: false }
+          - { dir: ESP32-S3_RLCD_4.2_Display,            env: waveshare_rlcd,     out: marine-display-rlcd-42,     ota: true }
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -57,10 +59,13 @@ jobs:
         run: pio run -d "${{ matrix.dir }}" -e ${{ matrix.env }}
       - name: Merge into one image
         run: python tools/merge_firmware.py "${{ matrix.dir }}" ${{ matrix.env }} out/${{ matrix.out }}.bin
+      - name: Update file for the display's Firmware Update page
+        if: matrix.ota
+        run: cp "${{ matrix.dir }}/.pio/build/${{ matrix.env }}/firmware.bin" out/ota-${{ matrix.out }}.bin
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.out }}
-          path: out/${{ matrix.out }}.bin
+          path: out/*.bin
 
   release:
     needs: build
@@ -98,7 +103,7 @@ jobs:
           STABLE=$(gh release view --json tagName -q .tagName)
           STABLE_AT=$(gh release view "$STABLE" --json publishedAt -q .publishedAt)
           echo "Stable: $STABLE ($STABLE_AT)"
-          gh release download "$STABLE" --pattern '*.bin' --dir docs
+          gh release download "$STABLE" --pattern 'marine-display-*.bin' --dir docs   # installer images only, not ota-*
           sed -i "s/\"version\": \"dev\"/\"version\": \"$STABLE\"/" docs/manifest-*.json
 
           # Newest pre-release, shown only while it's newer than the stable release
