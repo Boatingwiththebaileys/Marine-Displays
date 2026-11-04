@@ -1680,43 +1680,86 @@ void handle_assets_page() {
 
 // Upload handler: called during multipart upload
 static File assets_upload_file;
+// Why the last asset upload failed ("" = it worked), shown by handle_assets_upload_post()
+static String assets_upload_error;
+static String assets_upload_path;
+
+static void assets_upload_close(bool remove_partial) {
+    if (assets_upload_file) { assets_upload_file.flush(); assets_upload_file.close(); }
+    if (remove_partial && assets_upload_path.length() && SD_MMC.exists(assets_upload_path)) {
+        SD_MMC.remove(assets_upload_path);
+    }
+}
+
 void handle_assets_upload() {
     HTTPUpload& upload = config_server.upload();
     if (upload.status == UPLOAD_FILE_START) {
+        assets_upload_error = "";
+        assets_upload_path = "";
         String filename = upload.filename;
         // sanitize filename: remove paths
         int slash = filename.lastIndexOf('/');
         if (slash >= 0) filename = filename.substring(slash + 1);
+        if (filename.length() == 0) { assets_upload_error = "No file was selected."; return; }
         String path = String("/assets/") + filename;
         Serial.printf("[ASSETS] Upload start: %s -> %s\n", upload.filename.c_str(), path.c_str());
+        if (SD_MMC.cardType() == CARD_NONE) {
+            assets_upload_error = "No SD card found. Insert a FAT32-formatted card (exFAT isn't supported) and restart the display.";
+            Serial.println("[ASSETS] No SD card");
+            return;
+        }
+        // A new or blank card has no /assets folder yet, and opening a file
+        // inside a missing folder fails, so create it first.
+        if (!SD_MMC.exists("/assets") && !SD_MMC.mkdir("/assets")) {
+            assets_upload_error = "Couldn't create the assets folder on the SD card. Check the card isn't full or write-protected.";
+            Serial.println("[ASSETS] mkdir /assets failed");
+            return;
+        }
         // open file for write (overwrite)
         assets_upload_file = SD_MMC.open(path, FILE_WRITE);
         if (!assets_upload_file) {
+            assets_upload_error = "Couldn't save the file on the SD card. Check the card isn't full or write-protected.";
             Serial.printf("[ASSETS] Failed to open %s for writing\n", path.c_str());
+            return;
         }
+        assets_upload_path = path;
     } else if (upload.status == UPLOAD_FILE_WRITE) {
-        if (assets_upload_file) {
-            assets_upload_file.write(upload.buf, upload.currentSize);
+        if (assets_upload_error.length()) return;
+        size_t written = 0;
+        if (assets_upload_file) written = assets_upload_file.write(upload.buf, upload.currentSize);
+        if (written != upload.currentSize) {
+            assets_upload_error = "Writing to the SD card failed part way through. The card may be full.";
+            Serial.println("[ASSETS] Short write");
+            assets_upload_close(true);
         }
     } else if (upload.status == UPLOAD_FILE_END) {
-        if (assets_upload_file) {
-            assets_upload_file.flush();
-            assets_upload_file.close();
+        bool failed = assets_upload_error.length() > 0;
+        assets_upload_close(failed);
+        if (!failed) {
             Serial.printf("[ASSETS] Upload finished: %s (%u bytes)\n", upload.filename.c_str(), (unsigned)upload.totalSize);
         }
+    } else if (upload.status == UPLOAD_FILE_ABORTED) {
+        assets_upload_error = "The upload was interrupted before it finished.";
+        assets_upload_close(true);
     }
 }
 
 // Final POST handler after upload completes (redirect back)
 void handle_assets_upload_post() {
-    scan_sd_assets(); // refresh cached asset lists after upload
+    bool ok = assets_upload_error.length() == 0;
+    if (ok) scan_sd_assets(); // refresh cached file list after new upload
     String html = "<!DOCTYPE html><html><head>";
     html += STYLE;
-    html += "<title>Upload Complete</title></head><body><div class='container'>";
-    html += "<h3>Upload complete</h3>";
+    html += "<title>Upload</title></head><body><div class='container'>";
+    if (ok) {
+        html += "<h3>Upload complete</h3>";
+    } else {
+        html += "<h3>Upload failed</h3>";
+        html += "<p>" + assets_upload_error + "</p>";
+    }
     html += "<p><a href='/assets'>Back to Assets</a></p>";
     html += "</div></body></html>";
-    config_server.send(200, "text/html", html);
+    config_server.send(ok ? 200 : 500, "text/html", html);
 }
 
 void handle_assets_delete() {
