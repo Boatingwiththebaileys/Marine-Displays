@@ -1229,7 +1229,7 @@ void loop() {
 
     // --- Screen-off timeout ---------------------------------------------------
     // g_last_activity_ms is updated on every touch in Lvgl_Touchpad_Read().
-    // When the timeout fires: backlight off + WiFi modem sleep.
+    // When the timeout fires: backlight off (WiFi stays awake).
     // Wake is handled in Lvgl_Touchpad_Read(): first touch restores everything
     // and is swallowed so it doesn't trigger a UI action.
     if (screen_off_timeout_min > 0) {
@@ -1238,8 +1238,10 @@ void loop() {
         if (!g_screen_is_off && (now_ms - g_last_activity_ms >= timeout_ms)) {
             g_screen_is_off = true;
             Set_Backlight(0);
-            WiFi.setSleep(true);
-            Serial.println("[SCREEN] Screen off — power saving active");
+            // WiFi stays awake: the display still needs its data for alarms
+            // and the buzzer, and modem sleep makes pings and the web page
+            // unreliable.
+            Serial.println("[SCREEN] Screen off (backlight off)");
         }
     }
     // -------------------------------------------------------------------------
