@@ -58,7 +58,7 @@
 <main>
   <p class="small"><a href="./">← Back to the installer</a></p>
   <h1>Marine Displays help</h1>
-  <p class="lede">How to install, set up and get the most from your Boating with the Baileys display.
+  <p class="lede">How to install, set up and get the most from your display.
     Covers the 4" Square (Signal K and NMEA 2000), 2.8" and 2.1" Round, and 4.2" RLCD displays.</p>
 
   <section>
@@ -304,8 +304,14 @@
     <a class="top" href="#">↑ Top</a>
     <h2>13. Updating and backups</h2>
     <h3>Updating</h3>
-    <p>Use the <a href="./">installer</a> with <b>Erase device unticked</b>. Your WiFi, screens and settings are kept.</p>
-    <div class="warn"><b>Don't use installer files on the Firmware Update page</b>The <code>.bin</code> files from the installer and the GitHub releases are complete flash images for USB installing. Don't upload them on the display's own <b>Firmware Update</b> page.</div>
+    <p>There are two ways to update. Both keep your WiFi, screens and settings.</p>
+    <ul>
+      <li><b>Over USB with the <a href="./">installer</a></b> (works for every display): leave <b>Erase device unticked</b>.</li>
+      <li><b>Over WiFi from the display's Firmware Update page</b> (4" Square, NMEA 2000 and RLCD): download the <b>update file</b> for your display from the
+        <a href="https://github.com/Boatingwiththebaileys/Marine-Displays/releases">GitHub releases</a>. It's the one whose name starts with <code>ota-</code>, for example
+        <code>ota-marine-display-square.bin</code>. Upload it on the Firmware Update page, and the display restarts on the new version.</li>
+    </ul>
+    <div class="warn"><b>Use the ota- file on the Firmware Update page</b>The files without <code>ota-</code> are complete installer images for USB. The Firmware Update page refuses them, and refuses firmware meant for a different display model, so nothing is changed if you pick the wrong file. Update files are included from the first release after v1.0.1; displays on v1.0.1 or earlier should update once with the installer.</div>
     <h3>Backups</h3>
     <ul>
       <li>On the Square displays, screen settings are also saved to the SD card (<code>config</code> folder) and loaded from there first. Erasing the display won't lose your screens while that card is in.</li>

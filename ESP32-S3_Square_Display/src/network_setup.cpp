@@ -2,6 +2,7 @@
 
 #include "gauge_config.h"
 #include "version.h"
+#include "ota_guard.h"
 #include <Arduino.h>
 #include <WiFi.h>
 #include <WebServer.h>
@@ -2938,22 +2939,37 @@ void handle_assets_delete() {
 // ---------------------------------------------------------------------------
 // OTA firmware update handlers
 // ---------------------------------------------------------------------------
+// Checks each upload is an app update for this display (see ota_guard.h)
+static OtaGuard ota_guard;
+
 void handle_ota_upload() {
     HTTPUpload& upload = config_server.upload();
     if (upload.status == UPLOAD_FILE_START) {
         Serial.printf("[OTA] Start: %s\n", upload.filename.c_str());
+        ota_guard.begin();
         // UPDATE_SIZE_UNKNOWN lets the Update library size from the partition table
         if (!Update.begin(UPDATE_SIZE_UNKNOWN)) {
             Update.printError(Serial);
         }
     } else if (upload.status == UPLOAD_FILE_WRITE) {
         esp_task_wdt_reset();
+        if (!ota_guard.feed(upload.buf, upload.currentSize)) {
+            // Wrong kind of file: stop here, nothing more is written.
+            if (Update.isRunning()) {
+                Serial.printf("[OTA] Rejected: %s\n", ota_guard.message());
+                Update.abort();
+            }
+            return;
+        }
         if (Update.write(upload.buf, upload.currentSize) != upload.currentSize) {
             Update.printError(Serial);
         }
     } else if (upload.status == UPLOAD_FILE_END) {
         esp_task_wdt_reset();   // end() verifies hash — can take a moment
-        if (Update.end(true)) {
+        if (!ota_guard.finish()) {
+            Serial.printf("[OTA] Rejected: %s\n", ota_guard.message());
+            if (Update.isRunning()) Update.abort();
+        } else if (Update.end(true)) {
             Serial.printf("[OTA] Success: %u bytes\n",
                           (unsigned)upload.totalSize);
         } else {
@@ -2963,7 +2979,8 @@ void handle_ota_upload() {
 }
 
 void handle_ota_post() {
-    bool ok = !Update.hasError();
+    const char* rejected = ota_guard.message();
+    bool ok = !rejected && !Update.hasError();
     String html = "<!DOCTYPE html><html><head>";
     html += "<meta charset='UTF-8'>";
     if (ok) html += "<meta http-equiv='refresh' content='20;url=/'>";
@@ -2974,7 +2991,8 @@ void handle_ota_post() {
         html += "<p>Device is rebooting&hellip; page will reload in 20 seconds.</p>";
     } else {
         html += "<h3>Update FAILED</h3>";
-        html += "<p>" + String(Update.errorString()) + "</p>";
+        html += "<p>" + String(rejected ? rejected : Update.errorString()) + "</p>";
+        if (rejected) html += "<p>Nothing was changed. The display is still running its current firmware.</p>";
         html += "<p><a href='/update'>Try again</a></p>";
     }
     html += "</div></body></html>";
@@ -3021,7 +3039,9 @@ void handle_ota_page() {
     html += "<h2>Firmware Update</h2>";
     html += "<p style='font-size:0.85em;color:#888'>" + String(info) + "</p>";
     html += "<form method='POST' action='/update' enctype='multipart/form-data'>";
-    html += "<p>Select a <code>.bin</code> firmware file built for this board:</p>";
+    html += "<p>Select the <b>update file</b> for this display, named <code>ota-marine-display-....bin</code>, "
+            "from the <a href='https://github.com/Boatingwiththebaileys/Marine-Displays/releases' target='_blank'>GitHub releases</a>. "
+            "The installer files (<code>marine-display-....bin</code> without <code>ota-</code>) won't work here.</p>";
     html += "<input type='file' name='firmware' accept='.bin' required style='margin-bottom:12px'><br>";
     html += "<input type='submit' value='Upload &amp; Flash' "
             "onclick=\"this.disabled=true;this.value='Flashing&hellip;';this.form.submit()\">";
