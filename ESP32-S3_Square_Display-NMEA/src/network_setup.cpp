@@ -2673,8 +2673,8 @@ void handle_device_page() {
         html += "<div class='form-row'><label>Brightness:</label>";
         html += "<input type='range' name='brightness_lv' min='10' max='200' value='" + String(brightness_level) + "'";
         html += " oninput='var v=parseInt(this.value),s=this.nextElementSibling;";
-        html += "if(v>=110){var f=(v-110)/90;var p=Math.round(10+f*f*90);s.textContent=p+\"%\";s.style.color=\"#111\";}";
-        html += "else{var f=(v-10)/99;var p=Math.round(10+f*f*90);s.textContent=\"R:\"+p+\"%\";s.style.color=\"#f44\";}' style='width:120px;vertical-align:middle;'>";
+        html += "if(v>=110){var f=(v-110)/90;var p=Math.round(20+f*f*80);s.textContent=p+\"%\";s.style.color=\"#111\";}";
+        html += "else{var f=(v-10)/99;var p=Math.round(20+f*f*80);s.textContent=\"R:\"+p+\"%\";s.style.color=\"#f44\";}' style='width:120px;vertical-align:middle;'>";
         {
             float frac;
             int pwm;
@@ -2683,7 +2683,7 @@ void handle_device_page() {
             } else {
                 frac = (float)(brightness_level - 10) / 99.0f;
             }
-            pwm = 10 + (int)(frac * frac * 90.0f);
+            pwm = 20 + (int)(frac * frac * 80.0f);
             if (brightness_level >= 110) {
                 html += "<span style='margin-left:8px;color:#111;'>" + String(pwm) + "%</span>";
             } else {
