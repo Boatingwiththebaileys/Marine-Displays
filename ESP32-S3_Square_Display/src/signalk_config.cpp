@@ -735,7 +735,7 @@ void subscribe_to_active_screen(int screen_1based) {
     std::vector<String> paths = get_active_screen_paths(screen_1based);
 
     // First unsubscribe from everything
-    String unsub = "{\"context\":\"vessels.self\",\"unsubscribe\":[{\"path\":\"*\"}]}";
+    String unsub = "{\"context\":\"*\",\"unsubscribe\":[{\"path\":\"*\"}]}";
     enqueue_outgoing(unsub);
 
     // Then subscribe to only what we need
@@ -772,7 +772,7 @@ void refresh_signalk_subscriptions() {
     // fragments the heap and leaves the SDMMC DMA layer without a contiguous block.
     // Manual string building uses PSRAM-backed Arduino String objects instead.
     // Unsubscribe first, then subscribe to active paths only.
-    String unsub = "{\"context\":\"vessels.self\",\"unsubscribe\":[{\"path\":\"*\"}]}";
+    String unsub = "{\"context\":\"*\",\"unsubscribe\":[{\"path\":\"*\"}]}";
     enqueue_outgoing(unsub);
 
     String out = "{\"context\":\"vessels.self\",\"subscribe\":[";

@@ -411,7 +411,7 @@ void subscribe_to_active_screen(int screen_1based) {
     int base = idx * PARAMS_PER_SCREEN;
 
     // Unsubscribe from everything first
-    String unsub = "{\"context\":\"vessels.self\",\"unsubscribe\":[{\"path\":\"*\"}]}";
+    String unsub = "{\"context\":\"*\",\"unsubscribe\":[{\"path\":\"*\"}]}";
 
     // Build subscribe for only this screen's paths
     String out = "{\"context\":\"vessels.self\",\"subscribe\":[";

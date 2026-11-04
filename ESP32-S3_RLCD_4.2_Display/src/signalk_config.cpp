@@ -521,7 +521,7 @@ void disable_signalk() {
 void subscribe_to_active_screen(int screen_0based) {
     std::vector<String> paths = get_active_screen_paths(screen_0based);
 
-    String unsub = "{\"context\":\"vessels.self\",\"unsubscribe\":[{\"path\":\"*\"}]}";
+    String unsub = "{\"context\":\"*\",\"unsubscribe\":[{\"path\":\"*\"}]}";
     enqueue_outgoing(unsub);
 
     String out = "{\"context\":\"vessels.self\",\"subscribe\":[";
@@ -543,7 +543,7 @@ void refresh_signalk_subscriptions() {
     int active = get_current_screen();
     std::vector<String> paths = get_active_screen_paths(active);
 
-    String unsub = "{\"context\":\"vessels.self\",\"unsubscribe\":[{\"path\":\"*\"}]}";
+    String unsub = "{\"context\":\"*\",\"unsubscribe\":[{\"path\":\"*\"}]}";
     enqueue_outgoing(unsub);
 
     String out = "{\"context\":\"vessels.self\",\"subscribe\":[";
