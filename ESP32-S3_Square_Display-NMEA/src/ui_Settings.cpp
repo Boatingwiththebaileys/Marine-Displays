@@ -357,13 +357,13 @@ extern "C" void night_mode_init_overlays(void) {
 // Quadratic curve gives more slider resolution at lower brightness.
 static uint8_t v4_slider_to_pwm(uint16_t slider_val) {
     if (slider_val >= 110) {
-        // Normal range: slider 110-200 -> PWM 10-100%
+        // Normal range: slider 110-200 -> PWM 20-100% (lower is too dark to read)
         float frac = (float)(slider_val - 110) / 90.0f;
-        return (uint8_t)(10 + (int)(frac * frac * 90.0f));
+        return (uint8_t)(20 + (int)(frac * frac * 80.0f));
     } else {
-        // Red range: slider 10-109 -> PWM 10-100%
+        // Red range: slider 10-109 -> PWM 20-100% (lower is too dark to read)
         float frac = (float)(slider_val - 10) / 99.0f;
-        return (uint8_t)(10 + (int)(frac * frac * 90.0f));
+        return (uint8_t)(20 + (int)(frac * frac * 80.0f));
     }
 }
 
