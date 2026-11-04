@@ -252,6 +252,58 @@ const char* get_custom_label(int screen_idx, int slot) {
     if (i < 0 || i >= NUM_SCREENS * 4) return "";
     return g_custom_labels[i].c_str();
 }
+
+// Labels are also kept in NVS so they survive a restart without an SD card.
+// One key per screen ("s0".."s4"), the 4 slots joined by \x1f.
+static const char* LABELS_NAMESPACE = "labels";
+
+static void save_custom_labels_nvs() {
+    Preferences p;
+    if (!p.begin(LABELS_NAMESPACE, false)) return;
+    for (int s = 0; s < NUM_SCREENS; ++s) {
+        String v;
+        for (int slot = 0; slot < 4; ++slot) {
+            if (slot) v += '\x1f';
+            v += g_custom_labels[s * 4 + slot];
+        }
+        p.putString((String("s") + s).c_str(), v);
+    }
+    p.end();
+}
+
+// Returns false if labels have never been saved to NVS.
+static bool load_custom_labels_nvs() {
+    Preferences p;
+    if (!p.begin(LABELS_NAMESPACE, true)) return false;  // never saved yet
+    for (int s = 0; s < NUM_SCREENS; ++s) {
+        String v = p.getString((String("s") + s).c_str(), "");
+        int start = 0;
+        for (int slot = 0; slot < 4; ++slot) {
+            int end = v.indexOf('\x1f', start);
+            if (end < 0) end = v.length();
+            g_custom_labels[s * 4 + slot] = start <= (int)v.length() ? v.substring(start, end) : String();
+            start = end + 1;
+        }
+    }
+    p.end();
+    return true;
+}
+
+// Escape text for a single-quoted HTML attribute value.
+static String label_attr(const String& in) {
+    String out;
+    out.reserve(in.length() + 8);
+    for (size_t i = 0; i < in.length(); ++i) {
+        char c = in[i];
+        if (c == '&') out += "&amp;";
+        else if (c == '<') out += "&lt;";
+        else if (c == '>') out += "&gt;";
+        else if (c == '\'') out += "&#39;";
+        else if (c == '"') out += "&quot;";
+        else out += c;
+    }
+    return out;
+}
 // Auto-scroll interval in seconds (0 = off)
 uint16_t auto_scroll_sec = 0;
 // Screen-off timeout in minutes (0 = always on)
@@ -708,8 +760,9 @@ void load_preferences() {
             }
         }
     }
-    // Load custom display labels from SD (non-critical, silently skip if absent)
-    {
+    // Load custom display labels from NVS. Displays set up before labels were
+    // kept in NVS only have the SD copy, so fall back to that.
+    if (!load_custom_labels_nvs()) {
         const char *lblpath = "/config/screen_labels.txt";
         if (SD_MMC.exists(lblpath)) {
             File lf = SD_MMC.open(lblpath, FILE_READ);
@@ -1306,7 +1359,7 @@ void handle_gauges_screen() {
     html += "</label></div>";
     html += "<div style='margin-bottom:8px;'><label>Display Label (override): "
             "<input type='text' name='clabel_" + String(s) + "_0' placeholder='e.g. Depth' value='";
-    html += g_custom_labels[s * 4 + 0];
+    html += label_attr(g_custom_labels[s * 4 + 0]);
     html += "' style='width:40%;'></label> "
             "<small style='color:#888'>Leave blank to use default field name</small></div>";
     html += "<div id='number_bg_color_div_" + String(s) + "' style='margin-bottom:8px;display:" + String(isCustomColor ? "block" : "none") + ";'>";
@@ -1382,7 +1435,7 @@ void handle_gauges_screen() {
     html += "</label></div>";
     html += "<div style='margin-bottom:8px;'><label>Display Label (override): "
             "<input type='text' name='clabel_" + String(s) + "_0' placeholder='e.g. Speed' value='";
-    html += g_custom_labels[s * 4 + 0];
+    html += label_attr(g_custom_labels[s * 4 + 0]);
     html += "' style='width:40%;'></label></div>";
     html += "<div style='margin-bottom:8px;'><label>Font Size: <select name='dual_top_font_size_" + String(s) + "'>";
     for (int fs = 0; fs < 5; fs++) {
@@ -1412,7 +1465,7 @@ void handle_gauges_screen() {
     html += "</label></div>";
     html += "<div style='margin-bottom:8px;'><label>Display Label (override): "
             "<input type='text' name='clabel_" + String(s) + "_1' placeholder='e.g. Depth' value='";
-    html += g_custom_labels[s * 4 + 1];
+    html += label_attr(g_custom_labels[s * 4 + 1]);
     html += "' style='width:40%;'></label></div>";
     html += "<div style='margin-bottom:8px;'><label>Font Size: <select name='dual_bottom_font_size_" + String(s) + "'>";
     for (int fs = 0; fs < 5; fs++) {
@@ -1449,7 +1502,7 @@ void handle_gauges_screen() {
         html += "</label></div>";
         html += "<div style='margin-bottom:4px;'><label>Display Label (override): "
                 "<input type='text' name='clabel_" + String(s) + "_" + String(lslot) + "' placeholder='e.g. Speed' value='";
-        html += g_custom_labels[s * 4 + lslot];
+        html += label_attr(g_custom_labels[s * 4 + lslot]);
         html += "' style='width:35%;'></label></div>";
         html += "<div style='margin-bottom:4px;'><label>Font Size: <select name='quad_" + String(name) + "_font_size_" + String(s) + "'>";
         for (int fs = 0; fs < 3; fs++) {
@@ -1576,7 +1629,7 @@ void handle_gauges_screen() {
     html += "</label></div>";
     html += "<div style='margin-bottom:8px;'><label>Display Label (override): "
             "<input type='text' name='clabel_" + String(s) + "_0' placeholder='e.g. RPM' value='";
-    html += g_custom_labels[s * 4 + 0];
+    html += label_attr(g_custom_labels[s * 4 + 0]);
     html += "' style='width:40%;'></label></div>";
     html += "<div style='margin-bottom:8px;'><label>Font Size: <select name='gauge_num_center_font_size_" + String(s) + "'>";
     for (int fs = 0; fs < 5; fs++) {
@@ -2218,6 +2271,26 @@ void handle_save_gauges() {
                 sd_available = false;
             }
         }
+        // Parse custom display labels (one text field per slot per screen) and
+        // save them to NVS, whether or not there's an SD card.
+        {
+            bool labels_changed = false;
+            for (int s = s_start; s < s_end; ++s) {
+                for (int slot = 0; slot < 4; ++slot) {
+                    String key = "clabel_" + String(s) + "_" + String(slot);
+                    if (config_server.hasArg(key)) {
+                        String v = config_server.arg(key);
+                        v.replace("\r", ""); v.replace("\n", ""); v.replace("\x1f", "");
+                        v.trim();
+                        if (v != g_custom_labels[s * 4 + slot]) {
+                            g_custom_labels[s * 4 + slot] = v;
+                            labels_changed = true;
+                        }
+                    }
+                }
+            }
+            if (labels_changed) save_custom_labels_nvs();
+        }
         int sd_ok_count = 0;
         bool sd_all_ok = false;
         if (sd_available) {
@@ -2276,15 +2349,7 @@ void handle_save_gauges() {
                 sd_all_ok = false;  // trigger NVS save below
             }
         }
-        // Parse and save custom display labels (one text field per slot per screen)
-        for (int s = s_start; s < s_end; ++s) {
-            for (int slot = 0; slot < 4; ++slot) {
-                String key = "clabel_" + String(s) + "_" + String(slot);
-                if (config_server.hasArg(key)) {
-                    g_custom_labels[s * 4 + slot] = config_server.arg(key);
-                }
-            }
-        }
+        // Custom display labels were parsed and saved to NVS above; SD copy too
         if (sd_all_ok) {
             File lf = SD_MMC.open("/config/screen_labels.tmp", FILE_WRITE);
             if (lf) {
