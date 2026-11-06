@@ -406,6 +406,19 @@ extern "C" void brightness_nvs_flush(void) {
 static uint32_t g_last_pwm_write_ms = 0;
 static const uint32_t PWM_WRITE_MIN_INTERVAL_MS = 50;
 
+// 5 quick taps anywhere: full brightness, normal colours (no red/night
+// overlay). Saved like a slider change.
+extern "C" void brightness_set_full(void) {
+    if (is_board_v4()) {
+        set_brightness_level(200);  // top of the slider: 100%, no red overlay
+        extern void Set_Backlight(uint8_t Light);
+        Set_Backlight(100);         // don't wait for the PWM write throttle
+    } else {
+        set_brightness_level(0);    // V3: "Normal"
+    }
+    Serial.println("[BRIGHT] 5 taps: full brightness");
+}
+
 extern "C" void set_brightness_level(uint8_t level) {
     brightness_level = level;
     if (is_board_v4()) {

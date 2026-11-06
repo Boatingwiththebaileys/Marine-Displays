@@ -113,6 +113,14 @@ void Lvgl_Display_LCD( lv_disp_drv_t *disp_drv, const lv_area_t *area, lv_color_
   lv_disp_flush_ready( disp_drv );
 }
 /*Read the touchpad*/
+#include "tap_reset.h"
+volatile bool g_full_brightness_request = false;
+static TapCounter g_tap_counter;
+extern lv_obj_t *ui_Settings;
+// Taps on the Settings panel are for its controls (brightness slider etc.),
+// so they don't count towards the 5-tap reset.
+static bool taps_count_here() { return !(ui_Settings && lv_scr_act() == ui_Settings); }
+
 void Lvgl_Touchpad_Read( lv_indev_drv_t * indev_drv, lv_indev_data_t * data )
 {
   uint16_t touchpad_x[GT911_LCD_TOUCH_MAX_POINTS] = {0};
@@ -125,9 +133,16 @@ void Lvgl_Touchpad_Read( lv_indev_drv_t * indev_drv, lv_indev_data_t * data )
     data->point.x = touchpad_x[0];
     data->point.y = touchpad_y[0];
     data->state = LV_INDEV_STATE_PR;
+    // A touch that starts on the Settings panel (e.g. the swipe up that
+    // closes it) never counts, even if it ends on a data screen.
+    if (taps_count_here()) g_tap_counter.update(true, touchpad_x[0], touchpad_y[0], millis());
+    else { g_tap_counter.reset(); g_tap_counter.ignore_press(); }
     ESP_LOGD(TAG_LVGL, "LVGL : X=%u Y=%u num=%d", touchpad_x[0], touchpad_y[0], touchpad_cnt);
   } else {
     data->state = LV_INDEV_STATE_REL;
+    // 5 quick taps anywhere: back to full brightness (handled in loop())
+    if (!taps_count_here()) g_tap_counter.reset();
+    else if (g_tap_counter.update(false, 0, 0, millis())) g_full_brightness_request = true;
   }
 }
 void example_increase_lvgl_tick(void *arg)

@@ -99,6 +99,23 @@ void apply_brightness_from_slider(uint8_t slider_pos)
     Set_Backlight(hw);
 }
 
+// 5 quick taps anywhere: full brightness, normal colours (no night overlay).
+void brightness_set_full(void)
+{
+    apply_brightness_from_slider(100);
+    Preferences p;
+    if (p.begin("settings", false)) {
+        p.putShort("bright_pos", 100);
+        p.end();
+    }
+    if (ui_BrightnessSlider != NULL) {
+        lv_slider_set_value(ui_BrightnessSlider, 100, LV_ANIM_OFF);
+        lv_obj_set_style_bg_color(ui_BrightnessSlider, lv_color_hex(0x00A8FF), LV_PART_INDICATOR);
+        lv_label_set_text_fmt(ui_BrightnessLabel, "Brightness: %d%%", (int)LCD_Backlight);
+    }
+    printf("[BRIGHT] 5 taps: full brightness\n");
+}
+
 // Event handler for brightness slider
 static void brightness_slider_event_cb(lv_event_t *e)
 {
@@ -119,7 +136,7 @@ static void brightness_slider_event_cb(lv_event_t *e)
     // Persist slider position
     Preferences p;
     if (p.begin("settings", false)) {
-        p.putUShort("bright_pos", (uint16_t)value);
+        p.putShort("bright_pos", (int16_t)value);  // same type the loader reads
         p.end();
     }
 }
