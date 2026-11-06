@@ -303,7 +303,7 @@ static void handle_network_page() {
     html += "<div class='form-row'><label>SignalK Port:</label><input name='signalk_port' type='number' value='" + String(saved_signalk_port) + "'></div>";
     html += "<div class='form-row'><label>Hostname:</label><input name='hostname' type='text' value='" + saved_hostname + "'></div>";
     html += "<div class='form-row'><label>WiFi wait (s):</label><input name='wifi_wait' type='number' min='15' max='300' step='1' value='" + String(wifi_wait_sec) + "'></div>";
-    html += "<div class='form-row'><label></label><small style='color:#666'>How long to look for your WiFi at start-up before switching to the setup hotspot. Default 15. Increase it (e.g. 90) if your router takes longer to start than the display.</small></div>";
+    html += "<div class='form-row'><label></label><small style='color:#666'>How long to look for your WiFi at start-up before switching to the setup hotspot. Default 15. Increase it (e.g. 90) if your router takes longer to start than the display. While it's looking, the screen doesn't update or respond to touch, so a longer wait means a longer frozen screen when the WiFi isn't there (or the password is wrong).</small></div>";
     html += "<div style='text-align:center;margin-top:12px;'><button class='tab-btn' type='submit' style='padding:10px 18px;'>Save & Reboot</button></div>";
     html += "</form>";
     html += "<p style='text-align:center; margin-top:10px;'><a href='/'>Back</a></p>";
