@@ -64,6 +64,12 @@ static String saved_password = "";
 static String saved_signalk_ip = "";
 static uint16_t saved_signalk_port = 0;
 static String saved_hostname = "";
+// Seconds to wait for the saved WiFi network at start-up before falling
+// back to the setup hotspot (AP mode). Longer helps when the boat's router
+// starts slower than the display; a wrong password then takes longer to
+// reach setup mode.
+static const uint16_t WIFI_WAIT_DEFAULT = 15, WIFI_WAIT_MIN = 15, WIFI_WAIT_MAX = 300;
+uint16_t wifi_wait_sec = WIFI_WAIT_DEFAULT;
 static uint8_t saved_unit_system = 3;  // 0=Metric,1=Imp US,2=Imp UK,3=Naut Met,4=Naut US,5=Naut UK
 
 uint16_t auto_scroll_sec = 0; // 0=off, otherwise seconds between screen changes
@@ -88,6 +94,7 @@ void save_preferences() {
     preferences.putString("signalk_ip", saved_signalk_ip);
     preferences.putUShort("signalk_port", saved_signalk_port);
     preferences.putString("hostname", saved_hostname);
+    preferences.putUShort("wifi_wait", wifi_wait_sec);
     preferences.putUChar("unit_system", saved_unit_system);
     preferences.putUChar("buzzer_mode", buzzer_mode);
     preferences.putUChar("alert_vol", alert_volume);
@@ -120,6 +127,8 @@ void load_preferences() {
         saved_signalk_ip = preferences.getString("signalk_ip", "openplotter.local");
         saved_signalk_port = preferences.getUShort("signalk_port", 0);
         saved_hostname = preferences.getString("hostname", "");
+        wifi_wait_sec = preferences.getUShort("wifi_wait", WIFI_WAIT_DEFAULT);
+        if (wifi_wait_sec < WIFI_WAIT_MIN || wifi_wait_sec > WIFI_WAIT_MAX) wifi_wait_sec = WIFI_WAIT_DEFAULT;
         saved_unit_system = preferences.getUChar("unit_system", 3);
         unit_system = (UnitSystem)saved_unit_system;
         buzzer_mode = preferences.getUChar("buzzer_mode", 1);
@@ -293,6 +302,8 @@ static void handle_network_page() {
     html += "<div class='form-row'><label>SignalK Server:</label><input name='signalk_ip' type='text' value='" + saved_signalk_ip + "'></div>";
     html += "<div class='form-row'><label>SignalK Port:</label><input name='signalk_port' type='number' value='" + String(saved_signalk_port) + "'></div>";
     html += "<div class='form-row'><label>Hostname:</label><input name='hostname' type='text' value='" + saved_hostname + "'></div>";
+    html += "<div class='form-row'><label>WiFi wait (s):</label><input name='wifi_wait' type='number' min='15' max='300' step='1' value='" + String(wifi_wait_sec) + "'></div>";
+    html += "<div class='form-row'><label></label><small style='color:#666'>How long to look for your WiFi at start-up before switching to the setup hotspot. Default 15. Increase it (e.g. 90) if your router takes longer to start than the display.</small></div>";
     html += "<div style='text-align:center;margin-top:12px;'><button class='tab-btn' type='submit' style='padding:10px 18px;'>Save & Reboot</button></div>";
     html += "</form>";
     html += "<p style='text-align:center; margin-top:10px;'><a href='/'>Back</a></p>";
@@ -343,6 +354,12 @@ static void handle_save_wifi() {
     saved_signalk_ip = config_server.arg("signalk_ip");
     saved_signalk_port = config_server.arg("signalk_port").toInt();
     saved_hostname = config_server.arg("hostname");
+    if (config_server.hasArg("wifi_wait")) {
+        long w = config_server.arg("wifi_wait").toInt();
+        if (w < WIFI_WAIT_MIN) w = WIFI_WAIT_MIN;
+        if (w > WIFI_WAIT_MAX) w = WIFI_WAIT_MAX;
+        wifi_wait_sec = (uint16_t)w;
+    }
     save_preferences();
 
     Serial.println("[WiFi Config] SSID: " + saved_ssid);
@@ -935,7 +952,7 @@ void setup_network() {
         WiFi.begin(saved_ssid.c_str(), saved_password.c_str());
         Serial.print("[WiFi] Connecting");
         int tries = 0;
-        while (WiFi.status() != WL_CONNECTED && tries < 30) {
+        while (WiFi.status() != WL_CONNECTED && tries < (int)wifi_wait_sec * 2) {
             delay(500);
             Serial.print(".");
             tries++;
