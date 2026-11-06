@@ -163,7 +163,7 @@
       <tr><td><b>Gauges / Screen Config</b></td><td>What each of the 5 screens shows: display type, data, colours, icons, alarm zones.</td></tr>
       <tr><td><b>Needle Styles</b></td><td>Needle colour, width, length and position for gauge screens.</td></tr>
       <tr><td><b>Assets</b></td><td>Upload, download and delete icon images on the SD card.</td></tr>
-      <tr><td><b>Network Setup</b></td><td>WiFi, Signal K server, hostname, and on the NMEA display the data source.</td></tr>
+      <tr><td><b>Network Setup</b></td><td>WiFi, Signal K server, hostname, <b>WiFi wait</b> (how long to look for your WiFi at start-up before switching to the setup hotspot: default 15 seconds, up to 300; the screen is frozen while it looks), and on the NMEA display the data source.</td></tr>
       <tr><td><b>Device Settings</b></td><td>Brightness, buzzer, auto-scroll, screen sleep and units.</td></tr>
       <tr><td><b>Firmware Update</b></td><td>Not for installer files. See <a href="#update">Updating</a>.</td></tr>
     </table></div>
@@ -330,7 +330,7 @@
       <tr><td>Installer shows no port</td><td>Use a different USB-C cable (some are power-only). Hold <b>BOOT</b> while plugging in. On Windows you may need the USB-serial driver for the board.</td></tr>
       <tr><td>Screen blank after installing</td><td>Unplug and plug back in.</td></tr>
       <tr><td>Can't see the setup WiFi network</td><td>It only appears when the display can't join a saved WiFi network, so give it a minute after power-on. If it had joined another network, use that network to reach its page.</td></tr>
-      <tr><td>The display shows its setup WiFi network after the boat's power is switched on</td><td>The display waits 15 seconds for your WiFi when it starts. If the router takes longer to start up, the display goes into setup mode and stays there. Increase <b>WiFi wait</b> on the Network page (up to 300 seconds, e.g. 90), restart the display once the network is up, or put the display on a different power switch and switch it on after the router.</td></tr>
+      <tr><td>The display shows its setup WiFi network after the boat's power is switched on</td><td>The display waits 15 seconds for your WiFi when it starts. If the router takes longer to start up, the display goes into setup mode and stays there. Increase <b>WiFi wait</b> on the Network page (up to 300 seconds, e.g. 90), restart the display once the network is up, or put the display on a different power switch and switch it on after the router. While the display is looking for WiFi the screen doesn't update or respond to touch, so with a long wait and no WiFi (or a wrong password) the screen stays frozen for that long before setup mode starts.</td></tr>
       <tr><td>No data on screen</td><td>Check the Signal K server IP and port on Network Setup, and that the display and server are on the same WiFi. Copy paths from the server's Data Browser, since a single wrong letter means no data.</td></tr>
       <tr><td>Needle stuck at the end of the gauge</td><td>The calibration values are probably in the wrong units. See <a href="#gauges">Gauge values use raw data units</a>.</td></tr>
       <tr><td>Icons or backgrounds missing from the lists</td><td>Check the card is FAT32 (not exFAT), the folder is named <code>assets</code> at the top of the card, icons are <code>.png</code> and backgrounds are <code>.bin</code>.</td></tr>
