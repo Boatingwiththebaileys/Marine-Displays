@@ -55,45 +55,71 @@ static lv_obj_t *ui_BrightnessSliderWidget = NULL;  // brightness slider (both V
 static lv_obj_t *ui_BrightnessPctLabel = NULL;       // value label (V4: %, V3: mode name)
 
 
-// Buzzer alert function.
+// Two beeps, advanced from loop() so the UI keeps drawing.
+// Timing matches the old busy-wait: 200 ms on, 100 ms off, 200 ms on.
 // Circuit: PIN6 LOW -> Q1 off -> Q7 on -> buzzer ON  (active-LOW via NPN pair)
 //          PIN6 HIGH -> Q1 on -> Q7 off -> buzzer OFF
 // When TCA9554 CONFIG register resets to 0xFF (all inputs), PIN6 becomes high-Z.
 // R18 (4.7k) then pulls Q1 base LOW -> Q7 stays ON -> buzzer sounds continuously.
-// Fix: always force CONFIG=0x00 (all outputs) before AND after every beep.
+// Fix: always force CONFIG=0x00 (all outputs) before the pattern and after it ends.
+enum BuzzerBeepPhase : uint8_t { BEEP_IDLE = 0, BEEP_ON1, BEEP_GAP, BEEP_ON2 };
+static BuzzerBeepPhase beep_phase = BEEP_IDLE;
+static uint32_t beep_until_ms = 0;
+static bool beep_is_v4 = false;
+
+static void buzzer_drive(bool on) {
+    if (beep_is_v4) {
+        I2C_Write_EXIO(CH32V003_OUTPUT_REG, on ? CH32V003_OUT_BUZZER : CH32V003_OUT_NORMAL);
+    } else {
+        Set_EXIO(EXIO_PIN6, on ? High : Low);
+    }
+}
+
+extern "C" bool buzzer_alert_busy(void) {
+    return beep_phase != BEEP_IDLE;
+}
+
+extern "C" void buzzer_alert_service(void) {
+    if (beep_phase == BEEP_IDLE) return;
+    if ((int32_t)(millis() - beep_until_ms) < 0) return;
+
+    if (beep_phase == BEEP_ON1) {
+        buzzer_drive(false);
+        beep_phase = BEEP_GAP;
+        beep_until_ms = millis() + 100;
+    } else if (beep_phase == BEEP_GAP) {
+        buzzer_drive(true);
+        beep_phase = BEEP_ON2;
+        beep_until_ms = millis() + 200;
+    } else {
+        buzzer_drive(false);
+        if (!beep_is_v4) Mode_EXIOS(0x00);
+        beep_phase = BEEP_IDLE;
+        printf("[BUZ] beep done\n");
+    }
+}
+
 extern "C" void trigger_buzzer_alert() {
     if (buzzer_mode == 0) return;
+    if (beep_phase != BEEP_IDLE) return;
     printf("trigger_buzzer_alert() called, buzzer_mode=%d\n", buzzer_mode);
 
-    if (is_board_v4()) {
+    beep_is_v4 = is_board_v4();
+    if (beep_is_v4) {
       // V4 (CH32V003): BEE_EN = EXIO6/bit6 = PIN_BEE_EN (pin 7).
       // Direction is 0xFF (all outputs). Write full register values directly
       // (not shadow-based read-modify-write) so shadow desync can't silence us.
-      // Re-assert DIR=0xFF first in case it was corrupted by io_expander library.
       printf("[BUZ] v4 beep: dir_shadow=0x%02x out_shadow=0x%02x\n",
              ch32v003_get_dir_shadow(), ch32v003_get_out_shadow());
-      I2C_Write_EXIO(CH32V003_DIR_REG, CH32V003_DIR_ALL_OUT);    // ensure DIR=0xFF
-      I2C_Write_EXIO(CH32V003_OUTPUT_REG, CH32V003_OUT_BUZZER);  // 0x7A: BEE_EN HIGH
-      ets_delay_us(200000);
-      I2C_Write_EXIO(CH32V003_OUTPUT_REG, CH32V003_OUT_NORMAL);  // 0x3A: BEE_EN LOW
-      ets_delay_us(100000);
-      I2C_Write_EXIO(CH32V003_OUTPUT_REG, CH32V003_OUT_BUZZER);  // 0x7A: BEE_EN HIGH
-      ets_delay_us(200000);
-      I2C_Write_EXIO(CH32V003_OUTPUT_REG, CH32V003_OUT_NORMAL);  // 0x3A: BEE_EN LOW
-      printf("[BUZ] v4 beep done\n");
+      I2C_Write_EXIO(CH32V003_DIR_REG, CH32V003_DIR_ALL_OUT);
     } else {
       // V3: buzzer on EXIO_PIN6 (bit5)
       Set_EXIOS(Read_EXIOS(exio_output_reg()) & (uint8_t)~(1 << (EXIO_PIN6 - 1)));
       Mode_EXIOS(0x00);
-      Set_EXIO(EXIO_PIN6, High);
-      ets_delay_us(200000);
-      Set_EXIO(EXIO_PIN6, Low);
-      ets_delay_us(100000);
-      Set_EXIO(EXIO_PIN6, High);
-      ets_delay_us(200000);
-      Set_EXIO(EXIO_PIN6, Low);
-      Mode_EXIOS(0x00);
     }
+    buzzer_drive(true);
+    beep_phase = BEEP_ON1;
+    beep_until_ms = millis() + 200;
 }
 
 // Event handler for buzzer dropdown

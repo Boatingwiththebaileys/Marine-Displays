@@ -40,23 +40,45 @@ bool night_mode_active = false;
 uint8_t brightness_slider_pos = 75;  // 0-100 slider position (default ~55% hw brightness)
 static lv_obj_t *night_overlay = NULL;
 
-// Buzzer alert function - makes two beeps
+// Two beeps, advanced from loop() so the needles keep moving.
+// Timing matches the old delay() sequence: 100 ms on, 100 ms off, 100 ms on.
+enum BuzzerBeepPhase : uint8_t { BEEP_IDLE = 0, BEEP_ON1, BEEP_GAP, BEEP_ON2 };
+static BuzzerBeepPhase beep_phase = BEEP_IDLE;
+static uint32_t beep_until_ms = 0;
+
+extern "C" bool buzzer_alert_busy(void) {
+    return beep_phase != BEEP_IDLE;
+}
+
+extern "C" void buzzer_alert_service(void) {
+    if (beep_phase == BEEP_IDLE) return;
+    if ((int32_t)(millis() - beep_until_ms) < 0) return;
+
+    if (beep_phase == BEEP_ON1) {
+        Set_EXIO(EXIO_PIN8, Low);
+        printf("  -> beep 1 off\n");
+        beep_phase = BEEP_GAP;
+        beep_until_ms = millis() + 100;
+    } else if (beep_phase == BEEP_GAP) {
+        Set_EXIO(EXIO_PIN8, High);
+        printf("  -> beep 2 on\n");
+        beep_phase = BEEP_ON2;
+        beep_until_ms = millis() + 100;
+    } else {
+        Set_EXIO(EXIO_PIN8, Low);
+        printf("  -> beep 2 off\n");
+        beep_phase = BEEP_IDLE;
+    }
+}
+
 extern "C" void trigger_buzzer_alert() {
     if (buzzer_mode == 0) return; // disabled
+    if (beep_phase != BEEP_IDLE) return;
     printf("trigger_buzzer_alert() called, buzzer_mode=%d\n", buzzer_mode);
-    // First beep
     printf("  -> beep 1 on\n");
     Set_EXIO(EXIO_PIN8, High);
-    delay(100);
-    Set_EXIO(EXIO_PIN8, Low);
-    printf("  -> beep 1 off\n");
-    delay(100);
-    // Second beep
-    printf("  -> beep 2 on\n");
-    Set_EXIO(EXIO_PIN8, High);
-    delay(100);
-    Set_EXIO(EXIO_PIN8, Low);
-    printf("  -> beep 2 off\n");
+    beep_phase = BEEP_ON1;
+    beep_until_ms = millis() + 100;
 }
 
 // Apply or remove the red night-mode overlay on lv_layer_top()
