@@ -1,4 +1,5 @@
 #include <Preferences.h>
+#include "tap_reset.h"
 // Global test mode flag: disables live data updates when true
 bool test_mode = false;
 #include <Arduino.h>
@@ -745,6 +746,11 @@ void loop() {
         }
     }
     
+    if (g_full_brightness_request) {
+        g_full_brightness_request = false;
+        extern void brightness_set_full(void);
+        brightness_set_full();
+    }
     Lvgl_Loop();
 
     // Small delay to prevent excessive loop iterations
