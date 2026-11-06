@@ -232,6 +232,12 @@ String saved_signalk_ip = "";
 uint16_t saved_signalk_port = 0;
 // Hostname for the device (editable via Network Setup)
 String saved_hostname = "";
+// Seconds to wait for the saved WiFi network at start-up before falling
+// back to the setup hotspot (AP mode). Longer helps when the boat's router
+// starts slower than the display; a wrong password then takes longer to
+// reach setup mode.
+static const uint16_t WIFI_WAIT_DEFAULT = 15, WIFI_WAIT_MIN = 15, WIFI_WAIT_MAX = 300;
+uint16_t wifi_wait_sec = WIFI_WAIT_DEFAULT;
 // Own ship MMSI for AIS self-filtering (0 = disabled)
 String saved_own_mmsi = "";
 // 10 SignalK paths: [screen][gauge] => idx = s*2+g
@@ -510,6 +516,7 @@ void save_preferences(bool skip_screen_blobs = false) {
         preferences.putString("password", saved_password);
         preferences.putString("signalk_ip", saved_signalk_ip);
         preferences.putString("hostname", saved_hostname);
+        preferences.putUShort("wifi_wait", wifi_wait_sec);
         preferences.putString("own_mmsi", saved_own_mmsi);
         preferences.putUShort("signalk_port", saved_signalk_port);
         // Persist device settings
@@ -620,6 +627,7 @@ void save_preferences(bool skip_screen_blobs = false) {
                     preferences.putString("password", saved_password);
                     preferences.putString("signalk_ip", saved_signalk_ip);
                     preferences.putString("hostname", saved_hostname);
+                    preferences.putUShort("wifi_wait", wifi_wait_sec);
                     preferences.putUShort("signalk_port", saved_signalk_port);
                     preferences.putUShort("buzzer_mode", (uint16_t)buzzer_mode);
                     preferences.putUShort("buzzer_cooldown", buzzer_cooldown_sec);
@@ -715,6 +723,8 @@ void load_preferences() {
         saved_signalk_ip = preferences.getString("signalk_ip", "openplotter.local");
         saved_signalk_port = preferences.getUShort("signalk_port", 0);
         saved_hostname = preferences.getString("hostname", "");
+        wifi_wait_sec = preferences.getUShort("wifi_wait", WIFI_WAIT_DEFAULT);
+        if (wifi_wait_sec < WIFI_WAIT_MIN || wifi_wait_sec > WIFI_WAIT_MAX) wifi_wait_sec = WIFI_WAIT_DEFAULT;
         saved_own_mmsi = preferences.getString("own_mmsi", "");
         // Load auto-scroll interval (seconds)
         auto_scroll_sec = preferences.getUShort("auto_scroll", 0);
@@ -2542,6 +2552,10 @@ void handle_network_page() {
     html += "<div class='form-row'><label>NMEA 2000:</label><span id='n2kstat' style='color:#888'>checking...</span></div>";
 
     html += "<div class='form-row'><label>ESP32 Hostname:</label><input name='hostname' type='text' value='" + saved_hostname + "'></div>";
+
+    html += "<div class='form-row'><label>WiFi wait (s):</label><input name='wifi_wait' type='number' min='15' max='300' step='1' value='" + String(wifi_wait_sec) + "'></div>";
+
+    html += "<div class='form-row'><label></label><small style='color:#666'>How long to look for your WiFi at start-up before switching to the setup hotspot. Default 15. Increase it (e.g. 90) if your router takes longer to start than the display.</small></div>";
     html += "<div style='text-align:center;margin-top:12px;'><button class='tab-btn' type='submit' style='padding:10px 18px;'>Save & Reboot</button></div>";
     html += "</form>";
     html += "<p style='text-align:center; margin-top:10px;'><a href='/'>Back</a></p>";
@@ -2615,6 +2629,12 @@ void handle_save_wifi() {
         saved_signalk_ip = config_server.arg("signalk_ip");
         saved_signalk_port = config_server.arg("signalk_port").toInt();
         saved_hostname = config_server.arg("hostname");
+        if (config_server.hasArg("wifi_wait")) {
+            long w = config_server.arg("wifi_wait").toInt();
+            if (w < WIFI_WAIT_MIN) w = WIFI_WAIT_MIN;
+            if (w > WIFI_WAIT_MAX) w = WIFI_WAIT_MAX;
+            wifi_wait_sec = (uint16_t)w;
+        }
         save_preferences();
         Serial.println("[WiFi Config] SSID: " + saved_ssid);
         Serial.println("[WiFi Config] SignalK IP: " + saved_signalk_ip);
@@ -2897,7 +2917,7 @@ void setup_network() {
     WiFi.begin(saved_ssid.c_str(), saved_password.c_str());
     Serial.print("Connecting to WiFi");
     int tries = 0;
-    while (WiFi.status() != WL_CONNECTED && tries < 30) {
+    while (WiFi.status() != WL_CONNECTED && tries < (int)wifi_wait_sec * 2) {
         delay(500);
         Serial.print(".");
         tries++;
