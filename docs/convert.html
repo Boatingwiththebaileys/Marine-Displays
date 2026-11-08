@@ -1,0 +1,293 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Background converter</title>
+<meta name="description" content="Convert PNG or JPG backgrounds to the RGB565 .bin format used by Marine Displays, in your browser.">
+<style>
+  :root {
+    --sea: #10202e;
+    --panel: #0a151f;
+    --line: #22384a;
+    --ink: #dbe6ee;
+    --dim: #8fa3b3;
+    --accent: #5fb4e6;
+    --warn: #e6a948;
+    --tip: #4fb38a;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--sea); color: var(--ink);
+    font: 16px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  main { width: min(100% - 32px, 860px); margin: 40px auto 60px; }
+  h1 { font-size: 28px; margin: 0 0 6px; }
+  h2 { font-size: 19px; margin: 0 0 12px; }
+  p { margin: 0 0 12px; }
+  p.lede { color: var(--dim); margin-bottom: 24px; }
+  a { color: var(--accent); }
+  section {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+    padding: 20px 22px; margin-bottom: 18px;
+  }
+  code { background: #142433; padding: 1px 5px; border-radius: 4px; font-size: 14px; overflow-wrap: anywhere; }
+  ul { margin: 0 0 12px; padding-left: 1.3em; }
+  li { margin-bottom: 4px; }
+  .small { font-size: 14px; color: var(--dim); }
+  .tip, .warn {
+    border-left: 4px solid var(--tip); background: rgb(79 179 138 / .08);
+    padding: 10px 14px; border-radius: 0 8px 8px 0; margin: 0 0 12px;
+  }
+  .warn { border-left-color: var(--warn); background: rgb(230 169 72 / .08); }
+  .tip > b:first-child, .warn > b:first-child { display: block; margin-bottom: 2px; }
+
+  #drop {
+    border: 2px dashed var(--line); border-radius: 12px; padding: 28px 16px;
+    text-align: center; cursor: pointer; transition: border-color .15s, background .15s;
+  }
+  #drop:hover, #drop.over { border-color: var(--accent); background: rgb(95 180 230 / .06); }
+  #drop b { color: var(--accent); }
+  #drop:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .opts { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px 20px; margin-top: 16px; }
+  .opt label { display: block; font-size: 14px; color: var(--dim); margin-bottom: 4px; }
+  .opt select, .opt input[type=number] {
+    width: 100%; background: #142433; color: var(--ink); border: 1px solid var(--line);
+    border-radius: 6px; padding: 7px 8px; font: inherit; font-size: 15px;
+  }
+  .opt input[type=color] { width: 48px; height: 34px; border: 1px solid var(--line); border-radius: 6px; background: #142433; padding: 2px; vertical-align: middle; }
+  .check { display: flex; gap: 8px; align-items: center; font-size: 15px; margin-top: 4px; }
+
+  button {
+    background: var(--accent); color: #06131d; border: 0; border-radius: 8px;
+    padding: 8px 14px; font: inherit; font-weight: 600; cursor: pointer;
+  }
+  button.secondary { background: #142433; color: var(--ink); border: 1px solid var(--line); font-weight: 500; }
+  button:disabled { opacity: .5; cursor: default; }
+
+  #results { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 14px; margin-top: 4px; }
+  .card { background: #0d1b27; border: 1px solid var(--line); border-radius: 10px; padding: 12px; }
+  .preview { position: relative; aspect-ratio: 1; background: #000; border-radius: 6px; overflow: hidden; }
+  .preview canvas { width: 100%; height: 100%; display: block; image-rendering: auto; }
+  .preview.round canvas { clip-path: circle(50% at 50% 50%); }
+  .card .name { font-weight: 600; margin: 8px 0 2px; overflow-wrap: anywhere; }
+  .card .meta { font-size: 13px; color: var(--dim); margin-bottom: 8px; }
+  .card .err { color: var(--warn); font-size: 14px; }
+  .bar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
+</style>
+</head>
+<body>
+<main>
+  <p class="small"><a href="./">← Back to the installer</a> · <a href="help.html#sd">SD card help</a></p>
+  <h1>Background converter</h1>
+  <p class="lede">Turn a PNG or JPG into the <code>.bin</code> background format the displays use.
+    Everything happens in your browser: your images aren't uploaded anywhere.</p>
+
+  <section>
+    <div id="drop" tabindex="0" role="button" aria-label="Choose images to convert">
+      <p style="margin:0"><b>Choose images</b> or drop them here</p>
+      <p class="small" style="margin:4px 0 0">PNG or JPG. You can pick several at once.</p>
+    </div>
+    <input id="file" type="file" accept="image/png,image/jpeg,image/webp" multiple hidden>
+
+    <div class="opts">
+      <div class="opt">
+        <label for="size">Size (pixels, square)</label>
+        <input id="size" type="number" min="16" max="1024" step="1" value="480">
+      </div>
+      <div class="opt">
+        <label for="fit">If the image isn't square</label>
+        <select id="fit">
+          <option value="cover">Crop to fill the square</option>
+          <option value="contain">Fit inside, fill the edges</option>
+          <option value="stretch">Stretch to the square</option>
+        </select>
+      </div>
+      <div class="opt">
+        <label for="bg">Fill colour (edges and transparent areas)</label>
+        <input id="bg" type="color" value="#000000">
+      </div>
+      <div class="opt">
+        <label>Preview</label>
+        <label class="check" style="color:var(--ink)"><input id="round" type="checkbox"> Show as a Round display</label>
+      </div>
+    </div>
+  </section>
+
+  <section id="out" hidden>
+    <div class="bar">
+      <h2 style="margin:0;flex:1">Converted</h2>
+      <button id="all" type="button">Download all</button>
+      <button id="clear" type="button" class="secondary">Clear</button>
+    </div>
+    <div id="results"></div>
+    <p class="small" style="margin:12px 0 0">The previews show the image after conversion, in the display's reduced colours.</p>
+  </section>
+
+  <section>
+    <h2>Using the files</h2>
+    <ul>
+      <li>Copy the <code>.bin</code> files into the <code>assets</code> folder on the display's SD card, or upload them on the display's <b>Assets</b> page.</li>
+      <li>Then pick the background for a screen on the display's <b>Gauge Calibration</b> page.</li>
+      <li><b>Icons stay as PNG</b>: only backgrounds need converting.</li>
+    </ul>
+    <div class="tip"><b>Tip: design at 480 × 480</b>All the displays are 480 × 480 pixels. Start your design at that size and nothing gets cropped or scaled. On the Round displays only the circle in the middle is visible: tick <i>Show as a Round display</i> to check what's cut off.</div>
+    <div class="warn"><b>Backgrounds must be square</b>The display works out the image size from the file size, assuming it's square. That's why this page always makes a square image. A non-square <code>.bin</code> from elsewhere will show up scrambled.</div>
+    <p class="small">Same result as the <code>convert_png_to_rgb565.py</code> script in the repository: raw RGB565 pixels, 2 bytes each, little-endian, no header.
+      A 480 × 480 background is 460,800 bytes.</p>
+  </section>
+</main>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const drop = $('drop'), file = $('file'), results = $('results'), out = $('out');
+  const sizeEl = $('size'), fitEl = $('fit'), bgEl = $('bg'), roundEl = $('round');
+  let items = [];   // { name, img, card }
+
+  // Remember the options between visits (per browser only)
+  const KEY = 'md-convert-opts';
+  try {
+    const o = JSON.parse(localStorage.getItem(KEY) || '{}');
+    if (o.size) sizeEl.value = o.size;
+    if (o.fit) fitEl.value = o.fit;
+    if (o.bg) bgEl.value = o.bg;
+    if (typeof o.round === 'boolean') roundEl.checked = o.round;
+  } catch (e) {}
+  function saveOpts() {
+    try { localStorage.setItem(KEY, JSON.stringify({ size: sizeEl.value, fit: fitEl.value, bg: bgEl.value, round: roundEl.checked })); } catch (e) {}
+  }
+
+  function size() {
+    const n = Math.round(Number(sizeEl.value));
+    return Math.min(1024, Math.max(16, isFinite(n) ? n : 480));
+  }
+
+  // Draw the image into an N×N canvas per the options, on the fill colour
+  function render(img, n) {
+    const c = document.createElement('canvas');
+    c.width = n; c.height = n;
+    const g = c.getContext('2d', { willReadFrequently: true });
+    g.fillStyle = bgEl.value;
+    g.fillRect(0, 0, n, n);
+    g.imageSmoothingEnabled = true;
+    g.imageSmoothingQuality = 'high';
+    const w = img.naturalWidth, h = img.naturalHeight;
+    if (fitEl.value === 'stretch' || (w === n && h === n)) {
+      g.drawImage(img, 0, 0, n, n);
+    } else if (fitEl.value === 'contain') {
+      const s = Math.min(n / w, n / h);
+      const dw = w * s, dh = h * s;
+      g.drawImage(img, (n - dw) / 2, (n - dh) / 2, dw, dh);
+    } else {
+      const s = Math.max(n / w, n / h);
+      const sw = n / s, sh = n / s;
+      g.drawImage(img, (w - sw) / 2, (h - sh) / 2, sw, sh, 0, 0, n, n);
+    }
+    return c;
+  }
+
+  // RGB888 → RGB565 little-endian, exactly as convert_png_to_rgb565.py.
+  // Also writes the 565 colours back into the canvas for the preview.
+  function toRgb565(canvas) {
+    const n = canvas.width;
+    const g = canvas.getContext('2d', { willReadFrequently: true });
+    const im = g.getImageData(0, 0, n, n), px = im.data;
+    const out = new Uint8Array(n * n * 2);
+    for (let i = 0, o = 0; i < px.length; i += 4, o += 2) {
+      const r5 = px[i] >> 3, g6 = px[i + 1] >> 2, b5 = px[i + 2] >> 3;
+      const v = (r5 << 11) | (g6 << 5) | b5;
+      out[o] = v & 0xff; out[o + 1] = v >> 8;
+      px[i] = (r5 << 3) | (r5 >> 2);
+      px[i + 1] = (g6 << 2) | (g6 >> 4);
+      px[i + 2] = (b5 << 3) | (b5 >> 2);
+      px[i + 3] = 255;
+    }
+    g.putImageData(im, 0, 0);
+    return out;
+  }
+
+  function binName(name) {
+    return name.replace(/\.[^.]+$/, '') + '.bin';
+  }
+
+  function convert(item) {
+    const n = size();
+    const canvas = render(item.img, n);
+    const data = toRgb565(canvas);
+    item.blob = new Blob([data], { type: 'application/octet-stream' });
+    item.outName = binName(item.name);
+
+    const card = item.card;
+    card.innerHTML = '';
+    const pv = document.createElement('div');
+    pv.className = 'preview' + (roundEl.checked ? ' round' : '');
+    pv.appendChild(canvas);
+    const nm = document.createElement('div'); nm.className = 'name'; nm.textContent = item.outName;
+    const w = item.img.naturalWidth, h = item.img.naturalHeight;
+    const meta = document.createElement('div'); meta.className = 'meta';
+    meta.textContent = `${n} × ${n} · ${data.length.toLocaleString()} bytes` +
+      (w !== h ? ` · from ${w} × ${h}` : (w !== n ? ` · scaled from ${w} × ${h}` : ''));
+    const btn = document.createElement('button'); btn.type = 'button'; btn.textContent = 'Download';
+    btn.addEventListener('click', () => download(item));
+    card.append(pv, nm, meta, btn);
+  }
+
+  function download(item) {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(item.blob);
+    a.download = item.outName;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  }
+
+  function addFiles(list) {
+    const files = [...list].filter(f => /^image\//.test(f.type) || /\.(png|jpe?g|webp)$/i.test(f.name));
+    if (!files.length) return;
+    out.hidden = false;
+    for (const f of files) {
+      const card = document.createElement('div'); card.className = 'card';
+      card.textContent = 'Converting ' + f.name + '…';
+      results.appendChild(card);
+      const item = { name: f.name, card };
+      const url = URL.createObjectURL(f);
+      const img = new Image();
+      img.onload = () => { item.img = img; items.push(item); convert(item); URL.revokeObjectURL(url); };
+      img.onerror = () => {
+        card.innerHTML = '';
+        const e = document.createElement('div'); e.className = 'err';
+        e.textContent = f.name + ': not an image this browser can read.';
+        card.appendChild(e);
+        URL.revokeObjectURL(url);
+      };
+      img.src = url;
+    }
+  }
+
+  drop.addEventListener('click', () => file.click());
+  drop.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); file.click(); } });
+  file.addEventListener('change', () => { addFiles(file.files); file.value = ''; });
+  ['dragenter', 'dragover'].forEach(t => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.add('over'); }));
+  ['dragleave', 'drop'].forEach(t => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.remove('over'); }));
+  drop.addEventListener('drop', (e) => addFiles(e.dataTransfer.files));
+  // Dropping anywhere on the page shouldn't open the image in the tab
+  window.addEventListener('dragover', (e) => e.preventDefault());
+  window.addEventListener('drop', (e) => { e.preventDefault(); if (e.target !== drop && !drop.contains(e.target)) addFiles(e.dataTransfer.files); });
+
+  [sizeEl, fitEl, bgEl].forEach(el => el.addEventListener('change', () => { saveOpts(); items.forEach(convert); }));
+  roundEl.addEventListener('change', () => {
+    saveOpts();
+    document.querySelectorAll('.preview').forEach(p => p.classList.toggle('round', roundEl.checked));
+  });
+
+  $('all').addEventListener('click', async () => {
+    for (const it of items) { if (it.blob) { download(it); await new Promise(r => setTimeout(r, 400)); } }
+  });
+  $('clear').addEventListener('click', () => { items = []; results.innerHTML = ''; out.hidden = true; });
+})();
+</script>
+</body>
+</html>

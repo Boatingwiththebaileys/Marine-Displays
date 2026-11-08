@@ -6,6 +6,8 @@ Plug your display into a computer with a USB-C data cable, open the link above i
 
 **[Help and setup guide →](https://boatingwiththebaileys.github.io/Marine-Displays/help.html)**: setting up screens, Signal K paths, gauges and alarms, SD cards, icons and backgrounds, and troubleshooting.
 
+**[Background converter →](https://boatingwiththebaileys.github.io/Marine-Displays/convert.html)**: turn a PNG or JPG into the `.bin` background format in your browser, no script needed.
+
 Want to change the code? The PlatformIO build instructions are in each display's folder.
 
 ---
