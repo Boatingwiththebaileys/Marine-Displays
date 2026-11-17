@@ -2749,6 +2749,8 @@ void handle_save_wifi() {
     }
 }
 
+bool Touch_Present(void);  // Touch_GT911.cpp
+
 void handle_device_page() {
     String html = "<html><head>";
     html += STYLE;
@@ -2769,6 +2771,10 @@ void handle_device_page() {
     html += "<option value='60'" + String(buzzer_cooldown_sec==60?" selected":"") + ">60s pause</option>";
     html += "</select></div>";
     // Auto-scroll (dropdown matching screen options)
+    if (!Touch_Present()) {
+        html += "<p style='background:#fff3e0;border:1px solid #ffcc80;border-radius:6px;padding:8px 10px'>"
+                "<b>No touch screen detected.</b> Use Auto-scroll to move between screens, and set brightness on this page.</p>";
+    }
     html += "<div class='form-row'><label>Auto-scroll:</label><select name='auto_scroll'>";
     html += "<option value='0'" + String(auto_scroll_sec==0?" selected":"") + ">Off</option>";
     html += "<option value='5'" + String(auto_scroll_sec==5?" selected":"") + ">5s</option>";

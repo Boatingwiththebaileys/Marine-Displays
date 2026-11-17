@@ -4,6 +4,25 @@
 // Runtime GT911 I2C address — set by Touch_Init() auto-detect
 uint8_t gt911_addr = GT911_ADDR_PRIMARY;
 
+// Non-touch boards (ESP32-S3-LCD-4) have no GT911. Polling a missing chip every
+// LVGL read (10 ms) keeps the I2C bus and loop() busy enough to stall the
+// screen and the web server, so once it's found missing we only look for it
+// every TOUCH_RECHECK_MS. If it turns up later, touch starts working.
+static bool touch_present = true;
+#define TOUCH_RECHECK_MS 3000
+bool Touch_Present(void) { return touch_present; }
+
+static bool GT911_ProbeAndSelect(bool verbose);
+// A few tries, in case the chip is slow to come up after reset.
+static bool GT911_Find(void)
+{
+  for (int i = 0; i < 3; i++) {
+    if (GT911_ProbeAndSelect(true)) return true;
+    vTaskDelay(pdMS_TO_TICKS(30));
+  }
+  return false;
+}
+
 struct GT911_Touch touch_data = {0};
 
 // Rate-limit noisy I2C error messages (every 5 seconds max)
@@ -252,6 +271,12 @@ uint8_t Touch_Init(void) {
     GT911_Touch_Reset();
     // V3 legacy/stable path: fixed GT911 address and interrupt-driven touch.
     gt911_addr = GT911_ADDR_PRIMARY;
+    if (!GT911_Find()) {
+      gt911_addr = GT911_ADDR_PRIMARY;
+      touch_present = false;
+      printf("[TOUCH] No touch panel found - non-touch board? Checking again every %d s\n", TOUCH_RECHECK_MS / 1000);
+      return false;
+    }
     printf("[TOUCH] GT911 detected at 0x%02X\n", gt911_addr);
     GT911_Read_cfg();
     attachInterrupt(GT911_INT_PIN, Touch_GT911_ISR, interrupt);
@@ -273,7 +298,12 @@ uint8_t Touch_Init(void) {
 
   // Auto-detect GT911 I2C address using product-ID read on both addresses.
   // Always probe after reset — forced 0x5D may have failed and GT911 may be at 0x14.
-  bool probed = GT911_ProbeAndSelect(true);
+  bool probed = GT911_Find();
+  if (!probed && is_board_v4()) {
+    touch_present = false;
+    printf("[TOUCH] No touch panel found - non-touch board? Checking again every %d s\n", TOUCH_RECHECK_MS / 1000);
+    return false;
+  }
   if (!probed) {
     if (!is_board_v4() && (cached_addr == GT911_ADDR_PRIMARY || cached_addr == GT911_ADDR_SECONDARY)) {
       gt911_addr = cached_addr;
@@ -397,6 +427,16 @@ uint8_t Touch_Read_Data(void) {
   uint8_t clear = 0;
   uint8_t Over = 0xAB;
   size_t i = 0,num=0;
+  if (!touch_present) {
+    static unsigned long last_check = 0;
+    unsigned long now = millis();
+    if (now - last_check < TOUCH_RECHECK_MS) return true;
+    last_check = now;
+    if (!GT911_ProbeAndSelect(false)) return true;
+    touch_present = true;
+    printf("[TOUCH] Touch panel found at 0x%02X\n", gt911_addr);
+    if (!is_board_v4()) attachInterrupt(GT911_INT_PIN, Touch_GT911_ISR, interrupt);
+  }
   if (!I2C_Read_Touch(gt911_addr, ESP_LCD_TOUCH_GT911_READ_XY_REG, buf, 1)) {
     if (is_board_v4()) {
       // Runtime recovery (v4 only): if touch moved address or glitched, re-probe both addresses.

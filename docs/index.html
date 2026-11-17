@@ -38,6 +38,7 @@
     border: 1px solid var(--line); border-radius: 10px; padding: 16px;
     display: grid; gap: 10px; align-content: start;
   }
+  .board[hidden] { display: none; }
   .board p { margin: 0; color: var(--dim); font-size: 14px; }
   .source {
     display: inline-flex; align-items: center; gap: 7px; justify-self: start;
@@ -133,14 +134,36 @@
     <p class="small" style="margin:0 0 14px">Test versions that aren't finished yet and may have bugs. Please only install one if you're happy to
       test it and <a href="https://github.com/Boatingwiththebaileys/Marine-Displays/issues">report how it goes</a>.
       To go back, install the normal version above with <b>Erase device</b> unticked and your settings are kept.</p>
+    <p class="small" style="margin:0 0 14px"><b>What's new:</b> works on the non-touch versions of these boards (e.g. Waveshare ESP32-S3-LCD-4). Without a touch panel the screen and web page stay responsive, and the Device page says to use Auto-scroll.</p>
     <div class="boards">
-      <div class="board n2k-card">
-        <div class="source n2k"><svg viewBox="0 0 24 16" aria-hidden="true"><path d="M1 4h22M6 4v8M12 4v8M18 4v8" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/><circle cx="6" cy="13" r="2.2" fill="currentColor"/><circle cx="12" cy="13" r="2.2" fill="currentColor"/><circle cx="18" cy="13" r="2.2" fill="currentColor"/><rect x="0" y="1.5" width="2.5" height="5" rx="1" fill="currentColor"/><rect x="21.5" y="1.5" width="2.5" height="5" rx="1" fill="currentColor"/></svg>NMEA 2000 over WiFi</div>
+      <div class="board" data-beta="square" hidden>
+        <div class="source sk"><img src="img/signalk.svg" alt="">Signal K</div>
         <h3>4" Square Display</h3>
-        <p>Waveshare ESP32-S3-Touch-LCD-4, V3 and V4 boards. Everything in the NMEA 2000 version, plus it can take its data
-          from a WiFi gateway (Yacht Devices, Actisense or SeaSmart) instead of the CAN port.
-          Set it up under <b>Network Setup → NMEA 2000 data source</b>.</p>
+        <esp-web-install-button manifest="beta/manifest-square.json">
+          <span slot="unsupported" class="unsupported">This browser can't install firmware. Use Chrome or Edge on a computer.</span>
+          <span slot="not-allowed" class="unsupported">Open this page over HTTPS to install.</span>
+        </esp-web-install-button>
+      </div>
+      <div class="board n2k-card" data-beta="square-nmea" hidden>
+        <div class="source n2k"><svg viewBox="0 0 24 16" aria-hidden="true"><path d="M1 4h22M6 4v8M12 4v8M18 4v8" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/><circle cx="6" cy="13" r="2.2" fill="currentColor"/><circle cx="12" cy="13" r="2.2" fill="currentColor"/><circle cx="18" cy="13" r="2.2" fill="currentColor"/><rect x="0" y="1.5" width="2.5" height="5" rx="1" fill="currentColor"/><rect x="21.5" y="1.5" width="2.5" height="5" rx="1" fill="currentColor"/></svg>NMEA 2000</div>
+        <h3>4" Square Display</h3>
         <esp-web-install-button manifest="beta/manifest-square-nmea.json">
+          <span slot="unsupported" class="unsupported">This browser can't install firmware. Use Chrome or Edge on a computer.</span>
+          <span slot="not-allowed" class="unsupported">Open this page over HTTPS to install.</span>
+        </esp-web-install-button>
+      </div>
+      <div class="board" data-beta="round-28" hidden>
+        <div class="source sk"><img src="img/signalk.svg" alt="">Signal K</div>
+        <h3>2.8" Round Display</h3>
+        <esp-web-install-button manifest="beta/manifest-round-28.json">
+          <span slot="unsupported" class="unsupported">This browser can't install firmware. Use Chrome or Edge on a computer.</span>
+          <span slot="not-allowed" class="unsupported">Open this page over HTTPS to install.</span>
+        </esp-web-install-button>
+      </div>
+      <div class="board" data-beta="round-21" hidden>
+        <div class="source sk"><img src="img/signalk.svg" alt="">Signal K</div>
+        <h3>2.1" Round Display</h3>
+        <esp-web-install-button manifest="beta/manifest-round-21.json">
           <span slot="unsupported" class="unsupported">This browser can't install firmware. Use Chrome or Edge on a computer.</span>
           <span slot="not-allowed" class="unsupported">Open this page over HTTPS to install.</span>
         </esp-web-install-button>
@@ -190,13 +213,16 @@
     Commercial use isn't allowed. Copyright © 2026 Boating with the Baileys.</p>
 </main>
 <script>
-  // The Beta section only appears while a beta is published (its manifest exists).
-  fetch('beta/manifest-square-nmea.json').then((r) => r.ok ? r.json() : Promise.reject())
-    .then((m) => {
-      document.getElementById('beta-version').textContent = m.version;
-      document.getElementById('beta').hidden = false;
-    })
-    .catch(() => {});
+  // The Beta section and each beta card only appear while that beta is published.
+  document.querySelectorAll('[data-beta]').forEach((card) => {
+    fetch('beta/manifest-' + card.dataset.beta + '.json').then((r) => r.ok ? r.json() : Promise.reject())
+      .then((m) => {
+        card.hidden = false;
+        document.getElementById('beta-version').textContent = m.version;
+        document.getElementById('beta').hidden = false;
+      })
+      .catch(() => {});
+  });
   fetch('manifest-square.json').then((r) => r.json())
     .then((m) => { document.getElementById('version').textContent = m.version; })
     .catch(() => {});

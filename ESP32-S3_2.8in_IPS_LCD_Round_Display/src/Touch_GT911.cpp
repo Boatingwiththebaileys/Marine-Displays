@@ -1,6 +1,32 @@
 #include "Touch_GT911.h"
 struct GT911_Touch touch_data = {0};
 
+// Non-touch versions of this display have no touch chip. Polling a missing chip
+// every LVGL read (10 ms) floods the log, can read garbage as phantom touches and
+// keeps loop() too busy for the screen and web server, so once it's found
+// missing we only look for it every TOUCH_RECHECK_MS.
+void IRAM_ATTR Touch_GT911_ISR(void);
+static bool touch_present = true;
+#define TOUCH_RECHECK_MS 3000
+bool Touch_Present(void) { return touch_present; }
+static bool touch_chip_answers(uint8_t addr) {
+  Wire.beginTransmission(addr);
+  return Wire.endTransmission(true) == 0;
+}
+// While the chip is missing: true means skip this read.
+static bool touch_missing_skip(uint8_t addr) {
+  if (touch_present) return false;
+  static unsigned long last_check = 0;
+  unsigned long now = millis();
+  if (now - last_check < TOUCH_RECHECK_MS) return true;
+  last_check = now;
+  if (!touch_chip_answers(addr)) return true;
+  touch_present = true;
+  printf("[TOUCH] Touch panel found\n");
+  attachInterrupt(GT911_INT_PIN, Touch_GT911_ISR, interrupt);
+  return false;
+}
+
 
 bool I2C_Read_Touch(uint8_t Driver_addr, uint16_t Reg_addr, uint8_t *Reg_data, uint32_t Length)
 {
@@ -36,6 +62,16 @@ bool I2C_Write_Touch(uint8_t Driver_addr, uint16_t Reg_addr, const uint8_t *Reg_
 uint8_t Touch_Init(void) {
 
   GT911_Touch_Reset();
+  bool found = false;
+  for (int i = 0; i < 3 && !found; i++) {
+    found = touch_chip_answers(GT911_ADDR);
+    if (!found) vTaskDelay(pdMS_TO_TICKS(30));
+  }
+  if (!found) {
+    touch_present = false;
+    printf("[TOUCH] No touch panel found - non-touch board? Checking again every %d s\r\n", TOUCH_RECHECK_MS / 1000);
+    return false;
+  }
   GT911_Read_cfg();
 
   attachInterrupt(GT911_INT_PIN, Touch_GT911_ISR, interrupt); 
@@ -74,7 +110,8 @@ uint8_t Touch_Read_Data(void) {
   uint8_t clear = 0;
   uint8_t Over = 0xAB;
   size_t i = 0,num=0;
-  I2C_Read_Touch(GT911_ADDR, ESP_LCD_TOUCH_GT911_READ_XY_REG, buf, 1);
+  if (touch_missing_skip(GT911_ADDR)) return true;
+  if (!I2C_Read_Touch(GT911_ADDR, ESP_LCD_TOUCH_GT911_READ_XY_REG, buf, 1)) return true;
   if ((buf[0] & 0x80) == 0x00) {                                              
     I2C_Write_Touch(GT911_ADDR, ESP_LCD_TOUCH_GT911_READ_XY_REG, &clear, 1);  // No touch data
   } else {
@@ -85,7 +122,10 @@ uint8_t Touch_Read_Data(void) {
       return true;
     }
     /* Read all points */
-    I2C_Read_Touch(GT911_ADDR, ESP_LCD_TOUCH_GT911_READ_XY_REG+1, &buf[1], touch_cnt * 8);
+    if (!I2C_Read_Touch(GT911_ADDR, ESP_LCD_TOUCH_GT911_READ_XY_REG+1, &buf[1], touch_cnt * 8)) {
+      I2C_Write_Touch(GT911_ADDR, ESP_LCD_TOUCH_GT911_READ_XY_REG, &clear, 1);
+      return true;
+    }
     /* Clear all */
     I2C_Write_Touch(GT911_ADDR, ESP_LCD_TOUCH_GT911_READ_XY_REG, &clear, 1);
     // printf(" points=%d \r\n",touch_cnt);

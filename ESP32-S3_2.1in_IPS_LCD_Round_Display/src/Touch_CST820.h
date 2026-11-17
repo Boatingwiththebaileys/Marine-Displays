@@ -55,6 +55,9 @@ struct CST820_Touch{
 
 
 uint8_t Touch_Init();
+// False on boards without a touch panel (non-touch versions of the display).
+// While false the driver only checks for the panel every few seconds.
+bool Touch_Present(void);
 uint8_t CST820_Touch_Reset(void);
 void CST820_AutoSleep(bool Sleep_State);
 uint16_t CST820_Read_cfg(void);
