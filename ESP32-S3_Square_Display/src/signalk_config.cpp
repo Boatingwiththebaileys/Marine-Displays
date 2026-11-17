@@ -83,6 +83,32 @@ char g_sk_datetime[32]         = {0};  // SK writes here; RTC sync reads it
 static PsramMap<String, float> extended_sensor_values;
 static PsramMap<String, String> extended_sensor_units;
 static PsramMap<String, String> extended_sensor_descriptions;
+// When each path last arrived (millis), for screens that show "--" on old data
+static PsramMap<String, uint32_t> sensor_rx_times;
+
+static void note_rx_time(const String& path) {
+    if (sensor_mutex != NULL && xSemaphoreTake(sensor_mutex, pdMS_TO_TICKS(50))) {
+        sensor_rx_times[path] = millis();
+        xSemaphoreGive(sensor_mutex);
+    }
+}
+
+// Milliseconds since the path last arrived; UINT32_MAX if it never has.
+uint32_t get_sensor_age_ms_by_path(const String& path) {
+    uint32_t age = UINT32_MAX;
+    if (path.length() && sensor_mutex != NULL && xSemaphoreTake(sensor_mutex, pdMS_TO_TICKS(50))) {
+        auto it = sensor_rx_times.find(path);
+        if (it != sensor_rx_times.end()) age = millis() - it->second;
+        xSemaphoreGive(sensor_mutex);
+    }
+    return age;
+}
+
+// Value if it arrived within max_age_ms, else NAN.
+float get_fresh_value_by_path(const String& path, uint32_t max_age_ms) {
+    if (get_sensor_age_ms_by_path(path) > max_age_ms) return NAN;
+    return get_sensor_value_by_path(path);
+}
 
 // WiFi and HTTP client (static to this file)
 static WebSocketsClient ws_client;
@@ -478,7 +504,24 @@ static void wsEvent(WStype_t type, uint8_t * payload, size_t length) {
                         continue;
                     }
 
+                    // environment.current arrives as an object {setTrue, setMagnetic, drift}:
+                    // store each part as its own path (e.g. environment.current.drift)
+                    if (val["value"].is<JsonObject>()) {
+                        JsonObject obj = val["value"].as<JsonObject>();
+                        for (JsonPair kv : obj) {
+                            if (!kv.value().is<float>()) continue;
+                            String sub = String(path) + "." + kv.key().c_str();
+                            if (sensor_mutex != NULL && xSemaphoreTake(sensor_mutex, pdMS_TO_TICKS(50))) {
+                                extended_sensor_values[sub] = kv.value().as<float>();
+                                xSemaphoreGive(sensor_mutex);
+                            }
+                            note_rx_time(sub);
+                        }
+                        continue;
+                    }
+
                     float value = val["value"].as<float>();
+                    note_rx_time(String(path));
 
                     // Check if this path matches any gauge path
                     bool found_in_gauge = false;

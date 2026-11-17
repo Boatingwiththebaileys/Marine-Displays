@@ -373,7 +373,7 @@ static const N2kField n2k_all_fields[] = {
     N2K_WATER_DEPTH, N2K_DEPTH_BELOW_KEEL, N2K_DEPTH_OFFSET,
     // Wind
     N2K_WIND_SPEED_APPARENT, N2K_WIND_ANGLE_APPARENT,
-    N2K_WIND_SPEED_TRUE, N2K_WIND_ANGLE_TRUE,
+    N2K_WIND_SPEED_TRUE, N2K_WIND_ANGLE_TRUE, N2K_WIND_DIRECTION_TRUE, N2K_CURRENT_SET, N2K_CURRENT_DRIFT,
     // Environment
     N2K_TEMPERATURE, N2K_SEA_TEMPERATURE, N2K_TEMPERATURE_SET,
     N2K_OUTSIDE_TEMP, N2K_OUTSIDE_HUMIDITY,
@@ -1297,7 +1297,7 @@ void handle_gauges_screen() {
     int displayType = screen_configs[s].display_type;
     if (config_server.hasArg("type")) {
         int t = config_server.arg("type").toInt();
-        if (t >= 0 && t <= 10) displayType = t;
+        if (t >= 0 && t <= 11) displayType = t;
     }
 
     Serial.printf("[GAUGES] fragment s=%d type=%d iRAM=%u\n", s, displayType,
@@ -1323,8 +1323,8 @@ void handle_gauges_screen() {
 
     // Display Type dropdown
     html += "<div style='margin-bottom:16px;'><label>Display Type: <select name='displaytype_" + String(s) + "' id='displaytype_" + String(s) + "' onchange='toggleGaugeConfig(" + String(s) + ")'>";
-    const char* dtNames[] = {"Gauge","Number","Dual","Quad","Gauge + Number","Graph","Compass","Position","AIS","Attitude","Anchor Alarm"};
-    for (int dt = 0; dt < 11; ++dt) {
+    const char* dtNames[] = {"Gauge","Number","Dual","Quad","Gauge + Number","Graph","Compass","Position","AIS","Attitude","Anchor Alarm","Wind"};
+    for (int dt = 0; dt < 12; ++dt) {
         html += "<option value='" + String(dt) + "'";
         if (displayType == dt) html += " selected";
         html += ">" + String(dtNames[dt]) + "</option>";
@@ -1430,6 +1430,38 @@ void handle_gauges_screen() {
     html += "<div style='margin-bottom:4px;'><label>Font Color: <input name='compass_br_font_color_" + String(s) + "' type='color' value='" + String(screen_configs[s].quad_br_font_color[0] ? screen_configs[s].quad_br_font_color : "#FFFFFF") + "'></label></div></div>";
     html += "</div></div>"; // end compass extra fields
     } // end displayType == DISPLAY_TYPE_COMPASS
+    flushHtml();
+
+    // ── Wind config ──────────────────────────────────────────────────
+    if (displayType == DISPLAY_TYPE_WIND) {
+    html += "<h4>Wind Settings</h4>";
+    html += "<p style='color:#888;font-size:0.9em;margin:0 0 8px'>Apparent wind from PGN 130306. "
+            "True wind, wind direction and drift (PGN 130577) are used when your network sends them, otherwise worked out from boat speed, heading and GPS (shown with a <em>calc</em> tag). "
+            "Missing or out-of-date data shows --.</p>";
+    html += "<div style='margin-bottom:8px;'><label>Background Color: <input name='wind_bg_color_" + String(s) + "' type='color' value='" + String(screen_configs[s].number_bg_color[0] ? screen_configs[s].number_bg_color : "#000000") + "'></label></div>";
+    html += "<h4>Bottom Fields</h4><div style='display:flex;gap:16px;flex-wrap:wrap;'>";
+    {
+        const char* posName[2] = {"bl", "br"};
+        const char* title[2]   = {"Bottom-Left (None = TWS)", "Bottom-Right (None = TWA)"};
+        const char* paths[2]   = {screen_configs[s].quad_bl_path, screen_configs[s].quad_br_path};
+        uint8_t sizes[2]       = {screen_configs[s].quad_bl_font_size, screen_configs[s].quad_br_font_size};
+        const char* cols[2]    = {screen_configs[s].quad_bl_font_color, screen_configs[s].quad_br_font_color};
+        for (int f = 0; f < 2; f++) {
+            String pre = "wind_" + String(posName[f]) + "_";
+            html += "<div style='flex:1;min-width:200px;'><h5>" + String(title[f]) + "</h5>";
+            flushHtml();
+            html += "<div style='margin-bottom:4px;'><label>NMEA 2000 Field: ";
+            n2k_select(html, pre + "path_" + String(s), paths[f]);
+            html += "</label></div>";
+            html += "<div style='margin-bottom:4px;'><label>Font Size: <select name='" + pre + "font_size_" + String(s) + "'>";
+            html += "<option value='0'" + String(sizes[f] == 0 ? " selected" : "") + ">Small (48pt)</option>";
+            html += "<option value='1'" + String(sizes[f] >= 1 ? " selected" : "") + ">Medium (72pt)</option>";
+            html += "</select></label></div>";
+            html += "<div style='margin-bottom:4px;'><label>Font Color: <input name='" + pre + "font_color_" + String(s) + "' type='color' value='" + String(cols[f][0] ? cols[f] : "#FFFFFF") + "'></label></div></div>";
+        }
+    }
+    html += "</div>";
+    } // end displayType == DISPLAY_TYPE_WIND
     flushHtml();
 
     // ── Dual display config ──────────────────────────────────────────
@@ -2029,6 +2061,25 @@ void handle_save_gauges() {
                         saveCompassField("br", screen_configs[s].quad_br_path, screen_configs[s].quad_br_font_size, screen_configs[s].quad_br_font_color);
                     }
                     
+                    // Save wind screen settings — only for WIND screens (shares quad_bl/br fields with Compass)
+                    if (screen_configs[s].display_type == DISPLAY_TYPE_WIND) {
+                        String bgk = "wind_bg_color_" + String(s);
+                        if (config_server.hasArg(bgk)) {
+                            strncpy(screen_configs[s].number_bg_color, config_server.arg(bgk).c_str(), 7);
+                            screen_configs[s].number_bg_color[7] = '\0';
+                        }
+                        auto saveWindField = [&](const char* pos, char* path, uint8_t& size, char* color) {
+                            String pk = "wind_" + String(pos) + "_path_" + String(s);
+                            if (config_server.hasArg(pk)) { String v = config_server.arg(pk); v.trim(); strncpy(path, v.c_str(), 127); path[127] = '\0'; }
+                            String sk = "wind_" + String(pos) + "_font_size_" + String(s);
+                            if (config_server.hasArg(sk)) { size = config_server.arg(sk).toInt() >= 1 ? 1 : 0; }
+                            String ck = "wind_" + String(pos) + "_font_color_" + String(s);
+                            if (config_server.hasArg(ck)) { strncpy(color, config_server.arg(ck).c_str(), 7); color[7] = '\0'; }
+                        };
+                        saveWindField("bl", screen_configs[s].quad_bl_path, screen_configs[s].quad_bl_font_size, screen_configs[s].quad_bl_font_color);
+                        saveWindField("br", screen_configs[s].quad_br_path, screen_configs[s].quad_br_font_size, screen_configs[s].quad_br_font_color);
+                    }
+
                     // Save quad display settings (TL, TR, BL, BR)
                     auto saveQuadrant = [&](const char* name, char* path, uint8_t& size, char* color) {
                         String pathKey = "quad_" + String(name) + "_path_" + String(s);

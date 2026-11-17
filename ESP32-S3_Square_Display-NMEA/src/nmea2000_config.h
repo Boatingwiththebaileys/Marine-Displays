@@ -177,6 +177,13 @@ enum N2kField : uint16_t {
     // PGN 126992 — System Time
     N2K_SYSTEM_TIME            = 140,
 
+    // PGN 130306 — true wind direction (north-referenced; the bow-referenced
+    // angle stays in N2K_WIND_ANGLE_TRUE)
+    N2K_WIND_DIRECTION_TRUE    = 141,
+    // PGN 130577 — Direction Data: current set and drift
+    N2K_CURRENT_SET            = 142,
+    N2K_CURRENT_DRIFT          = 143,
+
     N2K_FIELD_COUNT            // sentinel
 };
 
@@ -195,5 +202,8 @@ N2kField n2k_field_from_path(const String& path);
 // (e.g. "1" → N2K_ENGINE_RPM), then falls back to n2k_field_from_path()
 // for legacy SignalK path strings.
 N2kField n2k_field_from_stored(const String& stored);
+
+// 1 if the last heading (PGN 127250) was true, 0 if magnetic.
+extern volatile int g_n2k_heading_true;
 
 #endif // NMEA2000_CONFIG_H

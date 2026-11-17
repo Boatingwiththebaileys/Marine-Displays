@@ -12,6 +12,7 @@
 #include "ais_display.h"
 #include "attitude_display.h"
 #include "anchor_display.h"
+#include "wind_display.h"
 #include <lvgl.h>
 #include "esp_log.h"
 #include <Arduino.h>
@@ -195,6 +196,8 @@ bool apply_screen_visuals_for_one(int s) {
     Serial.printf("[APPLY_ONE] s=%d display_type=%d\n", s, screen_configs[s].display_type);
     Serial.flush();
     bool any = false;
+    // Leaving the wind screen: remove it (other types don't know about it)
+    if (screen_configs[s].display_type != DISPLAY_TYPE_WIND) wind_display_destroy(s);
     {
         bool a = apply_background_for_screen(s);
         bool b = false;
@@ -353,6 +356,22 @@ bool apply_screen_visuals_for_one(int s) {
             ais_display_destroy(s);
             position_display_create(s);
             mark_position_display_created(s + 1);
+            any = true;
+        } else if (screen_configs[s].display_type == DISPLAY_TYPE_WIND) {
+            Serial.printf("[APPLY_ONE] s=%d → WIND\n", s);
+            number_display_destroy(s);
+            dual_number_display_destroy(s);
+            quad_number_display_destroy(s);
+            gauge_number_display_destroy(s);
+            graph_display_destroy(s);
+            compass_display_destroy(s);
+            mark_compass_display_destroyed(s + 1);
+            position_display_destroy(s);
+            mark_position_display_destroyed(s + 1);
+            attitude_display_destroy(s);
+            ais_display_destroy(s);
+            anchor_display_destroy(s);
+            wind_display_create(s);
             any = true;
         } else if (screen_configs[s].display_type == DISPLAY_TYPE_AIS) {
             Serial.printf("[APPLY_ONE] s=%d → AIS\n", s);

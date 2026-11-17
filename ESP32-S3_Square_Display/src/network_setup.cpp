@@ -924,8 +924,8 @@ void handle_gauges_page() {
     html += "function toggleGaugeConfig(screen){\n";
     html += "  var sel=document.getElementById('displaytype_'+screen);\n";
     html += "  if(!sel) return;\n";
-    html += "  var divIds=['gaugeconfig','numberconfig','dualconfig','quadconfig','gaugenumconfig','graphconfig','compassconfig','positionconfig','aisconfig','anchorconfig'];\n";
-    html += "  var typeMap={'0':['gaugeconfig'],'1':['numberconfig'],'2':['dualconfig'],'3':['quadconfig'],'4':['gaugeconfig','gaugenumconfig'],'5':['graphconfig'],'6':['compassconfig'],'7':['positionconfig'],'8':['aisconfig'],'9':['anchorconfig']};\n";
+    html += "  var divIds=['gaugeconfig','numberconfig','dualconfig','quadconfig','gaugenumconfig','graphconfig','compassconfig','positionconfig','aisconfig','anchorconfig','windconfig'];\n";
+    html += "  var typeMap={'0':['gaugeconfig'],'1':['numberconfig'],'2':['dualconfig'],'3':['quadconfig'],'4':['gaugeconfig','gaugenumconfig'],'5':['graphconfig'],'6':['compassconfig'],'7':['positionconfig'],'8':['aisconfig'],'9':['anchorconfig'],'10':['windconfig']};\n";
     html += "  var show=typeMap[sel.value]||[];\n";
     html += "  divIds.forEach(function(d){\n";
     html += "    var el=document.getElementById(d+'_'+screen);\n";
@@ -1083,8 +1083,8 @@ void handle_gauges_screen() {
 
     // Display Type dropdown
     html += "<div style='margin-bottom:16px;'><label>Display Type: <select name='displaytype_" + String(s) + "' id='displaytype_" + String(s) + "' onchange='toggleGaugeConfig(" + String(s) + ")'>";
-    const char* dtNames[] = {"Gauge","Number","Dual","Quad","Gauge + Number","Graph","Compass","Position","AIS","Anchor Alarm"};
-    for (int dt = 0; dt < 10; ++dt) {
+    const char* dtNames[] = {"Gauge","Number","Dual","Quad","Gauge + Number","Graph","Compass","Position","AIS","Anchor Alarm","Wind"};
+    for (int dt = 0; dt < 11; ++dt) {
         html += "<option value='" + String(dt) + "'";
         if (screen_configs[s].display_type == dt) html += " selected";
         html += ">" + String(dtNames[dt]) + "</option>";
@@ -1178,6 +1178,34 @@ void handle_gauges_screen() {
     html += "</select></label></div>";
     html += "<div style='margin-bottom:4px;'><label>Font Color: <input name='compass_br_font_color_" + String(s) + "' type='color' value='" + String(screen_configs[s].quad_br_font_color[0] ? screen_configs[s].quad_br_font_color : "#FFFFFF") + "'></label></div></div>";
     html += "</div></div>"; // end compass
+    flushHtml();
+
+    // ── Wind config ──────────────────────────────────────────────────
+    html += "<div id='windconfig_" + String(s) + "' style='display:" + String(screen_configs[s].display_type == DISPLAY_TYPE_WIND ? "block" : "none") + ";'>";
+    html += "<h4>Wind Settings</h4>";
+    html += "<p style='color:#888;font-size:0.9em;margin:0 0 8px'>Apparent wind from <code>environment.wind.angleApparent</code> / <code>speedApparent</code>. "
+            "True wind, wind direction and drift are used when your system sends them, otherwise worked out from boat speed, heading and GPS (shown with a <em>calc</em> tag). "
+            "Missing or out-of-date data shows --.</p>";
+    html += "<div style='margin-bottom:8px;'><label>Background Color: <input name='wind_bg_color_" + String(s) + "' type='color' value='" + String(screen_configs[s].number_bg_color[0] ? screen_configs[s].number_bg_color : "#000000") + "'></label></div>";
+    html += "<h4>Bottom Fields</h4><div style='display:flex;gap:16px;flex-wrap:wrap;'>";
+    {
+        const char* posName[2] = {"bl", "br"};
+        const char* title[2]   = {"Bottom-Left (empty = TWS)", "Bottom-Right (empty = TWA)"};
+        const char* paths[2]   = {screen_configs[s].quad_bl_path, screen_configs[s].quad_br_path};
+        uint8_t sizes[2]       = {screen_configs[s].quad_bl_font_size, screen_configs[s].quad_br_font_size};
+        const char* cols[2]    = {screen_configs[s].quad_bl_font_color, screen_configs[s].quad_br_font_color};
+        for (int f = 0; f < 2; f++) {
+            String pre = "wind_" + String(posName[f]) + "_";
+            html += "<div style='flex:1;min-width:200px;'><h5>" + String(title[f]) + "</h5>";
+            html += "<div style='margin-bottom:4px;'><label>SignalK Path: <input name='" + pre + "path_" + String(s) + "' type='text' value='" + String(paths[f]) + "' placeholder='" + String(f == 0 ? "TWS" : "TWA") + "' style='width:90%'></label></div>";
+            html += "<div style='margin-bottom:4px;'><label>Font Size: <select name='" + pre + "font_size_" + String(s) + "'>";
+            html += "<option value='0'" + String(sizes[f] == 0 ? " selected" : "") + ">Small (48pt)</option>";
+            html += "<option value='1'" + String(sizes[f] >= 1 ? " selected" : "") + ">Medium (72pt)</option>";
+            html += "</select></label></div>";
+            html += "<div style='margin-bottom:4px;'><label>Font Color: <input name='" + pre + "font_color_" + String(s) + "' type='color' value='" + String(cols[f][0] ? cols[f] : "#FFFFFF") + "'></label></div></div>";
+        }
+    }
+    html += "</div></div>"; // end wind
     flushHtml();
 
     // ── Dual display config ──────────────────────────────────────────
@@ -1701,6 +1729,25 @@ void handle_save_gauges() {
                         saveCompassField("br", screen_configs[s].quad_br_path, screen_configs[s].quad_br_font_size, screen_configs[s].quad_br_font_color);
                     }
                     
+                    // Save wind screen settings — only for WIND screens (shares quad_bl/br fields with Compass)
+                    if (screen_configs[s].display_type == DISPLAY_TYPE_WIND) {
+                        String bgk = "wind_bg_color_" + String(s);
+                        if (config_server.hasArg(bgk)) {
+                            strncpy(screen_configs[s].number_bg_color, config_server.arg(bgk).c_str(), 7);
+                            screen_configs[s].number_bg_color[7] = '\0';
+                        }
+                        auto saveWindField = [&](const char* pos, char* path, uint8_t& size, char* color) {
+                            String pk = "wind_" + String(pos) + "_path_" + String(s);
+                            if (config_server.hasArg(pk)) { String v = config_server.arg(pk); v.trim(); strncpy(path, v.c_str(), 127); path[127] = '\0'; }
+                            String sk = "wind_" + String(pos) + "_font_size_" + String(s);
+                            if (config_server.hasArg(sk)) { size = config_server.arg(sk).toInt() >= 1 ? 1 : 0; }
+                            String ck = "wind_" + String(pos) + "_font_color_" + String(s);
+                            if (config_server.hasArg(ck)) { strncpy(color, config_server.arg(ck).c_str(), 7); color[7] = '\0'; }
+                        };
+                        saveWindField("bl", screen_configs[s].quad_bl_path, screen_configs[s].quad_bl_font_size, screen_configs[s].quad_bl_font_color);
+                        saveWindField("br", screen_configs[s].quad_br_path, screen_configs[s].quad_br_font_size, screen_configs[s].quad_br_font_color);
+                    }
+
                     // Save quad display settings (TL, TR, BL, BR)
                     auto saveQuadrant = [&](const char* name, char* path, uint8_t& size, char* color) {
                         String pathKey = "quad_" + String(name) + "_path_" + String(s);
@@ -2588,6 +2635,16 @@ String get_signalk_path_by_index(int idx) {
 }
 
 // Get SignalK paths needed by a single screen (0-based index)
+// Everything the wind screen reads (see update_needles_for_screen in main.cpp)
+static const char* const WIND_SK_PATHS[] = {
+    "environment.wind.angleApparent", "environment.wind.speedApparent",
+    "environment.wind.angleTrueWater", "environment.wind.speedTrue",
+    "environment.wind.directionTrue",
+    "navigation.headingTrue", "navigation.headingMagnetic", "navigation.magneticVariation",
+    "navigation.speedThroughWater", "navigation.speedOverGround", "navigation.courseOverGroundTrue",
+    "environment.current",
+};
+
 std::vector<String> get_signalk_paths_for_screen(int s) {
     std::vector<String> paths;
     std::set<String> unique;
@@ -2647,6 +2704,11 @@ std::vector<String> get_signalk_paths_for_screen(int s) {
             add("navigation.position");
             add("navigation.courseOverGroundTrue");
             add("navigation.speedOverGround");
+            break;
+        case DISPLAY_TYPE_WIND:
+            for (const char* p : WIND_SK_PATHS) add(p);
+            add(screen_configs[s].quad_bl_path);
+            add(screen_configs[s].quad_br_path);
             break;
     }
     return paths;

@@ -27,7 +27,8 @@ typedef enum {
         DISPLAY_TYPE_POSITION = 7,    // Lat/Lon + UTC time display
         DISPLAY_TYPE_AIS = 8,         // AIS radar display
         DISPLAY_TYPE_ATTITUDE = 9,    // Attitude (pitch/roll) indicator
-        DISPLAY_TYPE_ANCHOR = 10      // Anchor alarm with map view
+        DISPLAY_TYPE_ANCHOR = 10,     // Anchor alarm with map view
+        DISPLAY_TYPE_WIND = 11        // Wind: apparent/true wind and drift
 } DisplayType;
 
 // Number display background type (uses bg_image field)

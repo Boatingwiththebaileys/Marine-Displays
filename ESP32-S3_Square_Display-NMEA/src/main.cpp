@@ -27,6 +27,7 @@ bool test_mode = false;
 #include "graph_display.h"
 #include "position_display.h"
 #include "compass_display.h"
+#include "wind_display.h"
 #include "ais_display.h"
 #include "attitude_display.h"
 #include "anchor_display.h"
@@ -759,6 +760,40 @@ extern "C" void update_needles_for_screen(int screen_num) {
         compass_get_field(br_path, br_val, br_unit, br_desc);
         compass_display_update_bl(screen_idx, bl_val, bl_unit.c_str(), bl_desc.c_str());
         compass_display_update_br(screen_idx, br_val, br_unit.c_str(), br_desc.c_str());
+        return;
+    } else if (screen_configs[screen_idx].display_type == DISPLAY_TYPE_WIND) {
+        // Wind screen — NMEA 2000 angles already in degrees, speeds in m/s
+        auto fresh = [](N2kField f) { return get_fresh_value_by_path(String((int)f), WIND_STALE_MS); };
+        auto rad2deg = [](float r) { return isnan(r) ? NAN : r * (180.0f / (float)M_PI); };
+        WindInputs in;
+        in.awa_deg  = fresh(N2K_WIND_ANGLE_APPARENT);
+        in.aws_ms   = fresh(N2K_WIND_SPEED_APPARENT);
+        in.twa_deg  = fresh(N2K_WIND_ANGLE_TRUE);
+        in.tws_ms   = fresh(N2K_WIND_SPEED_TRUE);
+        in.twd_deg  = fresh(N2K_WIND_DIRECTION_TRUE);
+        in.hdg_deg  = fresh(N2K_HEADING);
+        in.hdg_true = g_n2k_heading_true;
+        float var   = fresh(N2K_MAGNETIC_VARIATION);              // PGN 127258, radians
+        if (isnan(var)) var = fresh(N2K_MAGNETIC_VARIATION_HDG);  // PGN 127250, radians
+        in.variation_deg = rad2deg(var);
+        in.stw_ms   = fresh(N2K_SPEED_WATER);
+        in.sog_ms   = fresh(N2K_SOG);
+        in.cog_deg  = fresh(N2K_COG);
+        in.set_deg  = fresh(N2K_CURRENT_SET);
+        in.drift_ms = fresh(N2K_CURRENT_DRIFT);
+        wind_display_update(screen_idx, &in);
+
+        // Bottom fields: None = TWS / TWA, otherwise the chosen field
+        const char* fpaths[2] = { screen_configs[screen_idx].quad_bl_path, screen_configs[screen_idx].quad_br_path };
+        for (int side = 0; side < 2; side++) {
+            String p = String(fpaths[side]);
+            if (p.length() == 0 || p == "0") { wind_display_update_field(screen_idx, side, 1, NAN, "", ""); continue; }
+            float v = get_fresh_value_by_path(p, WIND_STALE_MS);
+            String unit = get_sensor_unit_by_path(p);
+            String desc = get_sensor_description_by_path(p);
+            if (!isnan(v)) v = convert_unit(v, unit, p, unit);
+            wind_display_update_field(screen_idx, side, 0, v, unit.c_str(), desc.c_str());
+        }
         return;
     } else if (screen_configs[screen_idx].display_type == DISPLAY_TYPE_ATTITUDE) {
         // Attitude display — pitch/roll/yaw from onboard IMU

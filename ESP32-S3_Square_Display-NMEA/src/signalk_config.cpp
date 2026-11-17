@@ -80,6 +80,25 @@ char g_sk_datetime[32]         = {0};  // SK writes here; RTC sync reads it
 static PsramMap<String, float> extended_sensor_values;
 static PsramMap<String, String> extended_sensor_units;
 static PsramMap<String, String> extended_sensor_descriptions;
+// When each path last arrived (millis), for screens that show "--" on old data
+static PsramMap<String, uint32_t> sensor_rx_times;
+
+// Milliseconds since the path last arrived; UINT32_MAX if it never has.
+uint32_t get_sensor_age_ms_by_path(const String& path) {
+    uint32_t age = UINT32_MAX;
+    if (path.length() && sensor_mutex != NULL && xSemaphoreTake(sensor_mutex, pdMS_TO_TICKS(50))) {
+        auto it = sensor_rx_times.find(path);
+        if (it != sensor_rx_times.end()) age = millis() - it->second;
+        xSemaphoreGive(sensor_mutex);
+    }
+    return age;
+}
+
+// Value if it arrived within max_age_ms, else NAN.
+float get_fresh_value_by_path(const String& path, uint32_t max_age_ms) {
+    if (get_sensor_age_ms_by_path(path) > max_age_ms) return NAN;
+    return get_sensor_value_by_path(path);
+}
 
 // Path array for gauge parameter slots (loaded from NVS/SD config)
 static String signalk_paths[TOTAL_PARAMS];
@@ -169,6 +188,11 @@ float get_sensor_value_by_path(const String& path) {
 // Thread-safe setter by path (for NMEA 2000 route_value)
 void set_sensor_value_by_path(const String& path, float value) {
     if (path.length() == 0) return;
+
+    if (sensor_mutex != NULL && xSemaphoreTake(sensor_mutex, pdMS_TO_TICKS(50))) {
+        sensor_rx_times[path] = millis();
+        xSemaphoreGive(sensor_mutex);
+    }
 
     // Check gauge paths first
     for (int i = 0; i < TOTAL_PARAMS; i++) {

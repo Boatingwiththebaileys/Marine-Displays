@@ -26,6 +26,7 @@ bool test_mode = false;
 #include "graph_display.h"
 #include "position_display.h"
 #include "compass_display.h"
+#include "wind_display.h"
 #include "ais_display.h"
 #include "anchor_display.h"
 #include "unit_convert.h"
@@ -748,6 +749,41 @@ extern "C" void update_needles_for_screen(int screen_num) {
         compass_get_field(br_path, br_val, br_unit, br_desc);
         compass_display_update_bl(screen_idx, bl_val, bl_unit.c_str(), bl_desc.c_str());
         compass_display_update_br(screen_idx, br_val, br_unit.c_str(), br_desc.c_str());
+        return;
+    } else if (screen_configs[screen_idx].display_type == DISPLAY_TYPE_WIND) {
+        // Wind screen — Signal K angles in radians, speeds in m/s
+        auto fresh = [](const char* path) { return get_fresh_value_by_path(String(path), WIND_STALE_MS); };
+        auto deg = [](float rad) { return isnan(rad) ? NAN : rad * (180.0f / (float)M_PI); };
+        WindInputs in;
+        in.awa_deg  = deg(fresh("environment.wind.angleApparent"));
+        in.aws_ms   = fresh("environment.wind.speedApparent");
+        in.twa_deg  = deg(fresh("environment.wind.angleTrueWater"));
+        in.tws_ms   = fresh("environment.wind.speedTrue");
+        in.twd_deg  = deg(fresh("environment.wind.directionTrue"));
+        float hdg_t = fresh("navigation.headingTrue");
+        float hdg_m = fresh("navigation.headingMagnetic");
+        in.hdg_true = !isnan(hdg_t);
+        in.hdg_deg  = deg(in.hdg_true ? hdg_t : hdg_m);
+        in.variation_deg = deg(fresh("navigation.magneticVariation"));
+        in.stw_ms   = fresh("navigation.speedThroughWater");
+        in.sog_ms   = fresh("navigation.speedOverGround");
+        in.cog_deg  = deg(fresh("navigation.courseOverGroundTrue"));
+        in.set_deg  = deg(fresh("environment.current.setTrue"));
+        in.drift_ms = fresh("environment.current.drift");
+        wind_display_update(screen_idx, &in);
+
+        // Bottom fields: empty path = TWS / TWA, otherwise the chosen path
+        const char* fpaths[2] = { screen_configs[screen_idx].quad_bl_path, screen_configs[screen_idx].quad_br_path };
+        for (int side = 0; side < 2; side++) {
+            String p = String(fpaths[side]);
+            if (p.length() == 0) { wind_display_update_field(screen_idx, side, 1, NAN, "", ""); continue; }
+            float v = get_fresh_value_by_path(p, WIND_STALE_MS);
+            String unit = get_sensor_unit_by_path(p);
+            String desc = get_sensor_description_by_path(p);
+            if (!isnan(v)) v = convert_unit(v, unit, p, unit);
+            if (desc.length() == 0) desc = p.substring(p.lastIndexOf('.') + 1);
+            wind_display_update_field(screen_idx, side, 0, v, unit.c_str(), desc.c_str());
+        }
         return;
     } else if (screen_configs[screen_idx].display_type == DISPLAY_TYPE_AIS) {
         // AIS radar display — fetch targets from Signal K REST API, then redraw
