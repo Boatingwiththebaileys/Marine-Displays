@@ -10,6 +10,10 @@
 # The page itself always comes from main, and its firmware always comes from
 # the releases, so a beta can never replace the stable install.
 #
+# A tag run doesn't publish the page itself: Pages deploys made from a tag
+# report success but don't go live. Instead, once the release exists, it
+# starts a manual run on main, which publishes it.
+#
 # One-time setup: Settings -> Pages -> Source: "GitHub Actions", and allow
 # tags matching v* in Settings -> Environments -> github-pages.
 name: Web installer
@@ -23,6 +27,7 @@ on:
 
 permissions:
   contents: write   # attach .bin files to releases
+  actions: write    # start the publish run on main after a release
   pages: write
   id-token: write
 
@@ -82,10 +87,14 @@ jobs:
           files: out/*.bin
           prerelease: ${{ contains(github.ref_name, '-') }}
           make_latest: ${{ !contains(github.ref_name, '-') }}
+      - name: Publish the installer from main
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: gh workflow run web-installer.yml --ref main
 
   publish:
-    needs: [build, release]
-    if: ${{ !cancelled() && !contains(needs.*.result, 'failure') }}
+    if: github.ref_type != 'tag'
     runs-on: ubuntu-latest
     environment:
       name: github-pages
@@ -109,13 +118,7 @@ jobs:
             done
           }
 
-          # A stable tag's own run uses that tag: GitHub's "latest release" can
-          # still point at the previous one for a few seconds after creating it.
-          if [[ "$GITHUB_REF_TYPE" == "tag" && "$GITHUB_REF_NAME" != *-* ]]; then
-            STABLE="$GITHUB_REF_NAME"
-          else
-            STABLE=$(gh release view --json tagName -q .tagName)
-          fi
+          STABLE=$(gh release view --json tagName -q .tagName)
           STABLE_AT=$(gh release view "$STABLE" --json publishedAt -q .publishedAt)
           echo "Stable: $STABLE ($STABLE_AT)"
           gh release download "$STABLE" --pattern 'marine-display-*.bin' --dir docs   # installer images only, not ota-*
