@@ -2982,17 +2982,41 @@ void handle_needles_page() {
     html += "<div class='tab-content'>";
     html += "<h2>Needle Styles</h2>";
     html += "<form method='POST' action='/save-needles'>";
-    // Screen/gauge selectors
-    html += "<div class='form-row'><label>Screen:</label><select name='screen'>";
+    // Screen/gauge selectors. Changing either reloads the page so the fields
+    // show that needle's settings (otherwise Save would copy the old values).
+    static const char* const dtNames[] = {"Gauge","Number","Dual","Quad","Gauge + Number","Graph","Compass","Position","AIS","Attitude","Anchor Alarm","Wind"};
+    const int dtCount = sizeof(dtNames) / sizeof(dtNames[0]);
+    auto typeName = [&](int s) -> String {
+        int t = screen_configs[s].display_type;
+        return (t >= 0 && t < dtCount) ? String(dtNames[t]) : String("Unknown");
+    };
+    const char* reload = " onchange=\"location='/needles?screen='+this.form.screen.value+'&gauge='+this.form.gauge.value\"";
+    html += "<div class='form-row'><label>Screen:</label><select name='screen'" + String(reload) + ">";
     for (int i = 0; i < NUM_SCREENS; ++i) {
         // keep option value 0-based for backend, show 1-based to user
-        html += "<option value='" + String(i) + "'" + String(i==screen?" selected":"") + ">" + String(i+1) + "</option>";
+        html += "<option value='" + String(i) + "'" + String(i==screen?" selected":"") + ">" + String(i+1) + " - " + typeName(i) + "</option>";
     }
     html += "</select></div>";
-    html += "<div class='form-row'><label>Gauge:</label><select name='gauge'>";
+    html += "<div class='form-row'><label>Gauge:</label><select name='gauge'" + String(reload) + ">";
     html += "<option value='0'" + String(gauge==0?" selected":"") + ">Top</option>";
     html += "<option value='1'" + String(gauge==1?" selected":"") + ">Bottom</option>";
     html += "</select></div>";
+    // Say when this needle isn't shown, so changes here don't seem to do nothing
+    {
+        int t = screen_configs[screen].display_type;
+        String n = String(screen + 1);
+        String note;
+        if (t == DISPLAY_TYPE_GAUGE_NUMBER && gauge == 1)
+            note = "Screen " + n + " is a Gauge + Number screen, which has only the top needle.";
+        else if (t == DISPLAY_TYPE_GAUGE && gauge == 1 && !screen_configs[screen].show_bottom)
+            note = "The bottom gauge is switched off on screen " + n + ", so this needle isn't shown.";
+        else if (t != DISPLAY_TYPE_GAUGE && t != DISPLAY_TYPE_GAUGE_NUMBER)
+            note = "Screen " + n + " is a " + typeName(screen) + " screen, which doesn't use gauge needles.";
+        if (note.length()) {
+            html += "<p style='background:#3a3320;border-left:4px solid #e0b040;padding:8px 10px;margin:8px 0;'>"
+                    + note + " Settings saved here are kept and used if the screen is changed to a gauge.</p>";
+        }
+    }
     // Color
     html += "<div class='form-row'><label>Color:</label><input name='color' type='color' value='" + s.color + "'></div>";
     // Width
