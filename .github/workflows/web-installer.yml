@@ -109,7 +109,13 @@ jobs:
             done
           }
 
-          STABLE=$(gh release view --json tagName -q .tagName)
+          # A stable tag's own run uses that tag: GitHub's "latest release" can
+          # still point at the previous one for a few seconds after creating it.
+          if [[ "$GITHUB_REF_TYPE" == "tag" && "$GITHUB_REF_NAME" != *-* ]]; then
+            STABLE="$GITHUB_REF_NAME"
+          else
+            STABLE=$(gh release view --json tagName -q .tagName)
+          fi
           STABLE_AT=$(gh release view "$STABLE" --json publishedAt -q .publishedAt)
           echo "Stable: $STABLE ($STABLE_AT)"
           gh release download "$STABLE" --pattern 'marine-display-*.bin' --dir docs   # installer images only, not ota-*
