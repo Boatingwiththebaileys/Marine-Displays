@@ -298,8 +298,15 @@
     <ul>
       <li><b>Network Setup</b> shows a live count of NMEA 2000 messages received, which is a quick check that the bus is connected.</li>
       <li>The display only listens; it never sends anything onto the NMEA 2000 bus.</li>
-      <li>The <b>beta</b> version can also take its data from a <b>WiFi gateway</b> (Yacht Devices, Actisense or SeaSmart) instead of a cable. See the Beta section of the <a href="./">installer</a> and <b>Network Setup → NMEA 2000 data source</b>.</li>
     </ul>
+    <h3>Data from a WiFi gateway</h3>
+    <p>Instead of a cable to the NMEA 2000 bus, your display can take the same data from a WiFi gateway (Yacht Devices, Actisense or SeaSmart). Both are set on the <b>Network Setup</b> page:</p>
+    <ol>
+      <li><b>WiFi:</b> join the same network as the gateway. That's either your boat's router, or the gateway's own WiFi hotspot if it has one.</li>
+      <li><b>NMEA 2000 data source:</b> choose <b>WiFi gateway</b>, then the format, TCP or UDP, and the gateway's IP address and port, as shown on the gateway's own settings page.</li>
+      <li>Press <b>Save &amp; Reboot</b> once to save both.</li>
+    </ol>
+    <p>After it restarts, the <b>Status</b> line on Network Setup shows how many messages are arriving. If it says <b>unreadable lines</b>, the format doesn't match what the gateway is sending.</p>
   </section>
 
   <section id="update">
