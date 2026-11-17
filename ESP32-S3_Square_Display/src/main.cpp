@@ -1,5 +1,6 @@
 #include <Preferences.h>
 #include "tap_reset.h"
+#include "power_key.h"
 #include <esp_err.h>
 #include <WiFi.h>
 // Global test mode flag: disables live data updates when true
@@ -1646,6 +1647,7 @@ void loop() {
         g_full_brightness_request = false;
         brightness_set_full();
     }
+    power_key_loop();   // V4 on battery: hold the power button to switch off
     brightness_nvs_flush();
 
     // WS idle watchdog: resume WS automatically once the config page has been

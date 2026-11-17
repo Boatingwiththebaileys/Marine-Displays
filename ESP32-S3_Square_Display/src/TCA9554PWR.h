@@ -91,7 +91,7 @@ uint8_t pin_sdcs();                                         // V3=pin4(IO3), V4=
 
 // V4-only pin numbers (1-indexed) — V3 has no buzzer or SYS_EN
 #define PIN_BEE_EN   7                                      // EXIO6/bit6 (buzzer, V4 only)
-#define PIN_SYS_EN   6                                      // EXIO5/bit5 (LCD power, V4 only)
+#define PIN_SYS_EN   6                                      // EXIO5/bit5 (holds battery power on, V4 only; see power_key.h)
 
 /*****************************************************  Operation register REG   ****************************************************/   
 bool    I2C_Read_EXIO_safe(uint8_t REG, uint8_t *out);           // Read register; returns false on I2C failure (out unchanged)
