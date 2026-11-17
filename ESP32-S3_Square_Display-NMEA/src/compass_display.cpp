@@ -9,7 +9,7 @@
 // ─── Sweeping-tape compass geometry ───────────────────────────────────────────
 // The compass rose lives on a large virtual arc whose pivot sits BELOW the
 // 480×480 screen.  As heading changes the tape sweeps left/right, with a fixed
-// triangle pointer at the top centre — identical to the Raymarine p70/p70s.
+// triangle pointer at the top centre (a sweeping-tape heading display).
 //
 //  PIVOT:  (240, 570)  ← 90 px below the bottom edge
 //  ARC_R:  390 px      → tape top at y = 570-390 = 180
