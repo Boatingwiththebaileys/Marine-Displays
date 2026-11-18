@@ -1528,7 +1528,8 @@ void handle_gauges_screen() {
 
     flushHtml();
     if (!send_abandoned) config_server.sendContent(""); // chunked terminator
-    Serial.printf("[GAUGES] fragment s=%d complete, iRAM=%u\n", s,
+    Serial.printf("[GAUGES] fragment s=%d complete in %lu ms, WiFi %d dBm, iRAM=%u\n", s,
+        (unsigned long)(millis() - send_start), (int)WiFi.RSSI(),
         heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
 
     // The display is switched by /gauges/switch (called by showScreenTab on
@@ -2614,7 +2615,7 @@ void setup_network() {
     if (WiFi.status() == WL_CONNECTED) {
         // Disable power-save so the radio stays awake between loop() calls.
         WiFi.setSleep(false);
-        Serial.println("\nWiFi connected!");
+        Serial.printf("\nWiFi connected! Signal %d dBm (-50 good, -70 weak, -80 poor)\n", (int)WiFi.RSSI());
         Serial.print("IP: ");
         Serial.println(WiFi.localIP());
         // Start mDNS responder so device can be reached by hostname.local

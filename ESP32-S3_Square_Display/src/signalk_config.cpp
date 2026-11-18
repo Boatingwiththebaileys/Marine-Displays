@@ -547,7 +547,7 @@ static void wsEvent(WStype_t type, uint8_t * payload, size_t length) {
     }
 
     if (type == WStype_DISCONNECTED) {
-        Serial.println("[SK] WebSocket disconnected — will reconnect");
+        Serial.printf("[SK] WebSocket disconnected — will reconnect (WiFi %d dBm)\n", (int)WiFi.RSSI());
         current_backoff_ms = RECONNECT_BASE_MS;
         next_reconnect_at = millis() + RECONNECT_BASE_MS;
     }

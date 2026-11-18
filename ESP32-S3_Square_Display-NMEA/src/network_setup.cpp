@@ -3139,7 +3139,7 @@ void setup_network() {
     if (WiFi.status() == WL_CONNECTED) {
         // Disable power-save so the radio stays awake between loop() calls.
         WiFi.setSleep(false);
-        Serial.println("\nWiFi connected!");
+        Serial.printf("\nWiFi connected! Signal %d dBm (-50 good, -70 weak, -80 poor)\n", (int)WiFi.RSSI());
         Serial.print("IP: ");
         Serial.println(WiFi.localIP());
         // Start mDNS responder so device can be reached by hostname.local
