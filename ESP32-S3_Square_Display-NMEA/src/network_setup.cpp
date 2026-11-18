@@ -3063,6 +3063,9 @@ void handle_needles_page() {
     html += "<p style='text-align:center; margin-top:10px;'><a href='/'>Back</a></p>";
     html += "</div></div></body></html>";
     config_server.send(200, "text/html", html);
+    // Show the screen whose needle is being edited (after the reply is sent,
+    // as switching screens while sending raced LVGL DMA with TCP buffers)
+    ui_set_screen(screen + 1);   // 1-based
 }
 
 void handle_save_needles() {
