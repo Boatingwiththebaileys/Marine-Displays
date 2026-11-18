@@ -1221,16 +1221,11 @@ void handle_gauges_screen() {
         const char* posName[2] = {"bl", "br"};
         const char* title[2]   = {"Bottom-Left (empty = TWS)", "Bottom-Right (empty = TWA)"};
         const char* paths[2]   = {screen_configs[s].quad_bl_path, screen_configs[s].quad_br_path};
-        uint8_t sizes[2]       = {screen_configs[s].quad_bl_font_size, screen_configs[s].quad_br_font_size};
         const char* cols[2]    = {screen_configs[s].quad_bl_font_color, screen_configs[s].quad_br_font_color};
         for (int f = 0; f < 2; f++) {
             String pre = "wind_" + String(posName[f]) + "_";
             html += "<div style='flex:1;min-width:200px;'><h5>" + String(title[f]) + "</h5>";
             html += "<div style='margin-bottom:4px;'><label>SignalK Path: <input name='" + pre + "path_" + String(s) + "' type='text' value='" + String(paths[f]) + "' placeholder='" + String(f == 0 ? "TWS" : "TWA") + "' style='width:90%'></label></div>";
-            html += "<div style='margin-bottom:4px;'><label>Font Size: <select name='" + pre + "font_size_" + String(s) + "'>";
-            html += "<option value='0'" + String(sizes[f] == 0 ? " selected" : "") + ">Small (48pt)</option>";
-            html += "<option value='1'" + String(sizes[f] >= 1 ? " selected" : "") + ">Medium (72pt)</option>";
-            html += "</select></label></div>";
             html += "<div style='margin-bottom:4px;'><label>Font Color: <input name='" + pre + "font_color_" + String(s) + "' type='color' value='" + String(cols[f][0] ? cols[f] : "#FFFFFF") + "'></label></div></div>";
         }
     }
@@ -1763,16 +1758,15 @@ void handle_save_gauges() {
                             strncpy(screen_configs[s].number_bg_color, config_server.arg(bgk).c_str(), 7);
                             screen_configs[s].number_bg_color[7] = '\0';
                         }
-                        auto saveWindField = [&](const char* pos, char* path, uint8_t& size, char* color) {
+                        // No font size: the bottom fields only fit the small font
+                        auto saveWindField = [&](const char* pos, char* path, char* color) {
                             String pk = "wind_" + String(pos) + "_path_" + String(s);
                             if (config_server.hasArg(pk)) { String v = config_server.arg(pk); v.trim(); strncpy(path, v.c_str(), 127); path[127] = '\0'; }
-                            String sk = "wind_" + String(pos) + "_font_size_" + String(s);
-                            if (config_server.hasArg(sk)) { size = config_server.arg(sk).toInt() >= 1 ? 1 : 0; }
                             String ck = "wind_" + String(pos) + "_font_color_" + String(s);
                             if (config_server.hasArg(ck)) { strncpy(color, config_server.arg(ck).c_str(), 7); color[7] = '\0'; }
                         };
-                        saveWindField("bl", screen_configs[s].quad_bl_path, screen_configs[s].quad_bl_font_size, screen_configs[s].quad_bl_font_color);
-                        saveWindField("br", screen_configs[s].quad_br_path, screen_configs[s].quad_br_font_size, screen_configs[s].quad_br_font_color);
+                        saveWindField("bl", screen_configs[s].quad_bl_path, screen_configs[s].quad_bl_font_color);
+                        saveWindField("br", screen_configs[s].quad_br_path, screen_configs[s].quad_br_font_color);
                     }
 
                     // Save quad display settings (TL, TR, BL, BR)

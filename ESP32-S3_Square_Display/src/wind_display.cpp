@@ -352,9 +352,10 @@ void wind_display_create(int n) {
     // Bottom fields
     for (int side = 0; side < 2; side++) {
         const char* colhex = side == 0 ? cfg.quad_bl_font_color : cfg.quad_br_font_color;
-        uint8_t fsz = side == 0 ? cfg.quad_bl_font_size : cfg.quad_br_font_size;
         lv_color_t col = parse_color(colhex, lv_color_white());
-        const lv_font_t* vf = (fsz >= 1) ? &inter_72 : &inter_48;
+        // Always the small font: anything bigger runs into the dial. (The Quad
+        // screen's font size setting shares this storage, so it's ignored here.)
+        const lv_font_t* vf = &inter_48;
         lv_align_t al = side == 0 ? LV_ALIGN_BOTTOM_LEFT : LV_ALIGN_BOTTOM_RIGHT;
         int dx = side == 0 ? 12 : -12;
 
