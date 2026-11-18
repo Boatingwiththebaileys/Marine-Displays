@@ -1167,7 +1167,9 @@ void handle_gauges_page() {
     html += "      cont.innerHTML=h;\n";
     html += "      cont.setAttribute('data-tab',idx);\n";
     html += "      populateN2kSelects(cont);\n";  // populate dropdowns on fresh load
-    html += "      preloadFragments(idx);\n";
+    // No background loading of the other tabs: each one costs ~10 KB of the
+    // internal RAM WiFi needs, and on busy Signal K setups it starved the
+    // connection. Tabs load when clicked.
     html += "    })\n";
     // Retry up to 3 times on network error (e.g. server still closing shell connection)
     html += "    .catch(function(e){\n";

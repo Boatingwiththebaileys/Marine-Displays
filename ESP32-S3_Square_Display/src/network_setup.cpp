@@ -917,7 +917,9 @@ void handle_gauges_page() {
     html += "      cont.innerHTML=h;\n";
     html += "      cont.setAttribute('data-tab',idx);\n";
     html += "      setTimeout(function(){initScreenTab(idx);},10);\n";
-    html += "      preloadFragments(idx);\n";
+    // No background loading of the other tabs: each one costs ~10 KB of the
+    // internal RAM WiFi needs, and on busy Signal K setups it starved the
+    // connection. Tabs load when clicked.
     html += "    })\n";
     // Retry up to 3 times on network error (e.g. server still closing shell connection)
     html += "    .catch(function(e){\n";
@@ -1099,12 +1101,23 @@ void handle_gauges_screen() {
         g_http_html_buf_reserved = true;
     }
     html.clear();
+    // Stop sending if the browser has gone or the send has dragged on: each
+    // write waits while memory is low, and the display is frozen meanwhile
+    // (one report: 7 minutes on a single tab).
+    const uint32_t send_start = millis();
+    bool send_abandoned = false;
     auto flushHtml = [&]() {
-        if (html.length() > 0) {
+        if (html.length() == 0) return;
+        if (!send_abandoned &&
+            (!config_server.client().connected() || millis() - send_start > 20000)) {
+            send_abandoned = true;
+            Serial.printf("[GAUGES] fragment s=%d abandoned (browser gone or too slow)\n", s);
+        }
+        if (!send_abandoned) {
             esp_task_wdt_reset();
             config_server.sendContent(html);
-            html.clear();
         }
+        html.clear();
     };
 
     // ── stream_screen_config inlined ─────────────────────────────────
@@ -1514,7 +1527,7 @@ void handle_gauges_screen() {
     html += "</div>"; // close anchorconfig
 
     flushHtml();
-    config_server.sendContent(""); // chunked terminator
+    if (!send_abandoned) config_server.sendContent(""); // chunked terminator
     Serial.printf("[GAUGES] fragment s=%d complete, iRAM=%u\n", s,
         heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
 
