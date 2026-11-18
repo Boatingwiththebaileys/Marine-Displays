@@ -858,6 +858,28 @@ void handle_gauges_page() {
     // any in-flight background preload loop aborts and the user's request wins.
     html += "var preloadGen=0;\n";
     html += "var fragmentCache={};\n";
+    // Tabs already shown keep their live page content (with any edits, saved
+    // or not) while another tab is open, so coming back shows them as left.
+    html += "var tabNodes={};\n";
+    html += "function parkTab(){\n";
+    html += "  var cont=document.getElementById('screen-content');\n";
+    html += "  var t=cont.getAttribute('data-tab');\n";
+    html += "  if(t===null)return;\n";
+    html += "  var hold=document.createDocumentFragment();\n";
+    html += "  while(cont.firstChild)hold.appendChild(cont.firstChild);\n";
+    html += "  tabNodes[t]=hold;\n";
+    html += "  cont.removeAttribute('data-tab');\n";
+    html += "}\n";
+    html += "function unparkTab(idx){\n";
+    html += "  var hold=tabNodes[idx];\n";
+    html += "  if(!hold)return false;\n";
+    html += "  delete tabNodes[idx];\n";
+    html += "  var cont=document.getElementById('screen-content');\n";
+    html += "  cont.innerHTML='';\n";
+    html += "  cont.appendChild(hold);\n";
+    html += "  cont.setAttribute('data-tab',idx);\n";
+    html += "  return true;\n";
+    html += "}\n";
 
     // showScreenTab: switch tab + load fragment (from cache or device)
     html += "function showScreenTab(idx){\n";
@@ -871,6 +893,8 @@ void handle_gauges_page() {
     html += "  }\n";
     // Always switch the physical display, even when the fragment is cached
     html += "  fetch('/gauges/switch?s='+idx).catch(function(){});\n";
+    html += "  parkTab();\n";
+    html += "  if(unparkTab(idx))return;\n";
     html += "  loadScreenFragment(idx);\n";
     html += "}\n";
 
@@ -880,6 +904,7 @@ void handle_gauges_page() {
     html += "  var cont=document.getElementById('screen-content');\n";
     html += "  if(fragmentCache[idx]){\n";
     html += "    cont.innerHTML=fragmentCache[idx];\n";
+    html += "    cont.setAttribute('data-tab',idx);\n";
     html += "    setTimeout(function(){initScreenTab(idx);},10);\n";
     html += "    return;\n";
     html += "  }\n";
@@ -888,7 +913,9 @@ void handle_gauges_page() {
     html += "    .then(function(r){return r.text();})\n";
     html += "    .then(function(h){\n";
     html += "      fragmentCache[idx]=h;\n";
+    html += "      if(currentTab!==idx)return;\n";   // user has moved to another tab
     html += "      cont.innerHTML=h;\n";
+    html += "      cont.setAttribute('data-tab',idx);\n";
     html += "      setTimeout(function(){initScreenTab(idx);},10);\n";
     html += "      preloadFragments(idx);\n";
     html += "    })\n";

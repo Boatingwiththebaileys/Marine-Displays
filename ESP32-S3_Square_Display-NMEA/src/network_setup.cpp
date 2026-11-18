@@ -1116,18 +1116,43 @@ void handle_gauges_page() {
     html += "  }\n";
     // Always switch the physical display, even when fragment is cached
     html += "  fetch('/gauges/switch?s='+idx).catch(function(){});\n";
+    html += "  parkTab();\n";
+    html += "  if(unparkTab(idx))return;\n";
     html += "  loadScreenFragment(idx,-1);\n";
     html += "}\n";
 
     // Fragment cache: key = "idx" for stored type, "idx_type" for type override.
     // Re-visiting the same tab is instant; first visit fetches from device.
     html += "var fragmentCache={};\n";
+    // Tabs already shown keep their live page content (with any edits, saved
+    // or not) while another tab is open, so coming back shows them as left.
+    html += "var tabNodes={};\n";
+    html += "function parkTab(){\n";
+    html += "  var cont=document.getElementById('screen-content');\n";
+    html += "  var t=cont.getAttribute('data-tab');\n";
+    html += "  if(t===null)return;\n";
+    html += "  var hold=document.createDocumentFragment();\n";
+    html += "  while(cont.firstChild)hold.appendChild(cont.firstChild);\n";
+    html += "  tabNodes[t]=hold;\n";
+    html += "  cont.removeAttribute('data-tab');\n";
+    html += "}\n";
+    html += "function unparkTab(idx){\n";
+    html += "  var hold=tabNodes[idx];\n";
+    html += "  if(!hold)return false;\n";
+    html += "  delete tabNodes[idx];\n";
+    html += "  var cont=document.getElementById('screen-content');\n";
+    html += "  cont.innerHTML='';\n";
+    html += "  cont.appendChild(hold);\n";
+    html += "  cont.setAttribute('data-tab',idx);\n";
+    html += "  return true;\n";
+    html += "}\n";
     html += "function loadScreenFragment(idx,typeOverride,retries){\n";
     html += "  retries=retries||0;\n";
     html += "  var cont=document.getElementById('screen-content');\n";
     html += "  var ckey=(typeOverride>=0)?(idx+'_'+typeOverride):String(idx);\n";
     html += "  if(fragmentCache[ckey]){\n";
     html += "    cont.innerHTML=fragmentCache[ckey];\n";
+    html += "    cont.setAttribute('data-tab',idx);\n";
     html += "    populateN2kSelects(cont);\n";  // re-populate dropdowns from cache hit
     html += "    return;\n";
     html += "  }\n";
@@ -1138,7 +1163,9 @@ void handle_gauges_page() {
     html += "    .then(function(r){return r.text();})\n";
     html += "    .then(function(h){\n";
     html += "      fragmentCache[ckey]=h;\n";
+    html += "      if(currentTab!==idx)return;\n";   // user has moved to another tab
     html += "      cont.innerHTML=h;\n";
+    html += "      cont.setAttribute('data-tab',idx);\n";
     html += "      populateN2kSelects(cont);\n";  // populate dropdowns on fresh load
     html += "      preloadFragments(idx);\n";
     html += "    })\n";
