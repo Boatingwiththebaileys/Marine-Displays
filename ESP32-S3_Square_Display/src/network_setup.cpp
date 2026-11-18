@@ -869,6 +869,8 @@ void handle_gauges_page() {
     html += "    var b=document.getElementById('tabbtn_'+s);\n";
     html += "    if(b) b.style.background=(s===idx?'#e3eaf6':'#f4f6fa');\n";
     html += "  }\n";
+    // Always switch the physical display, even when the fragment is cached
+    html += "  fetch('/gauges/switch?s='+idx).catch(function(){});\n";
     html += "  loadScreenFragment(idx);\n";
     html += "}\n";
 
@@ -1494,11 +1496,9 @@ void handle_gauges_screen() {
     Serial.printf("[GAUGES] fragment s=%d complete, iRAM=%u\n", s,
         heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
 
-    // Switch the physical display AFTER the HTTP response is fully sent.
-    // Doing it before/during the response caused LVGL DMA flushes to race
-    // with TCP send-buffer allocations, leading to crashes on the 2nd or
-    // 3rd save→reload cycle.
-    ui_set_screen(s + 1);         // 1-based
+    // The display is switched by /gauges/switch (called by showScreenTab on
+    // every tab click), not here: the page also fetches the other tabs in the
+    // background, and switching here moved the display to the last one fetched.
 
     // Keep WS paused — the 60-second g_config_page_last_seen watchdog
     // (or navigating away) will resume it.  Do NOT resume here;
@@ -2477,7 +2477,7 @@ void handle_needles_page() {
         else if (t != DISPLAY_TYPE_GAUGE && t != DISPLAY_TYPE_GAUGE_NUMBER)
             note = "Screen " + n + " is a " + typeName(screen) + " screen, which doesn't use gauge needles.";
         if (note.length()) {
-            html += "<p style='background:#3a3320;border-left:4px solid #e0b040;padding:8px 10px;margin:8px 0;'>"
+            html += "<p style='background:#fff3e0;color:#333;border:1px solid #ffcc80;border-radius:6px;padding:8px 10px;margin:8px 0;'>"
                     + note + " Settings saved here are kept and used if the screen is changed to a gauge.</p>";
         }
     }
@@ -2609,6 +2609,17 @@ void setup_network() {
         config_server.send(204);
     });
     config_server.on("/gauges/screen", handle_gauges_screen);
+    config_server.on("/gauges/switch", []() {
+        // Switch the display to the tab being configured. Sent on every tab
+        // click, including when the tab's fragment comes from the page cache.
+        int s = config_server.arg("s").toInt();
+        config_server.send(204);   // reply first: switching screens while
+                                   // sending raced LVGL DMA with TCP buffers
+        if (s >= 0 && s < NUM_SCREENS) {
+            g_config_page_last_seen = millis();
+            ui_set_screen(s + 1);  // 1-based
+        }
+    });
     config_server.on("/save-gauges", HTTP_POST, handle_save_gauges);
     config_server.on("/needles", handle_needles_page);
     config_server.on("/save-needles", HTTP_POST, handle_save_needles);

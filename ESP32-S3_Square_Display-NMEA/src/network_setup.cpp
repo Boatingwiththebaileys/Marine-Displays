@@ -3013,7 +3013,7 @@ void handle_needles_page() {
         else if (t != DISPLAY_TYPE_GAUGE && t != DISPLAY_TYPE_GAUGE_NUMBER)
             note = "Screen " + n + " is a " + typeName(screen) + " screen, which doesn't use gauge needles.";
         if (note.length()) {
-            html += "<p style='background:#3a3320;border-left:4px solid #e0b040;padding:8px 10px;margin:8px 0;'>"
+            html += "<p style='background:#fff3e0;color:#333;border:1px solid #ffcc80;border-radius:6px;padding:8px 10px;margin:8px 0;'>"
                     + note + " Settings saved here are kept and used if the screen is changed to a gauge.</p>";
         }
     }
