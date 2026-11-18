@@ -242,12 +242,11 @@ extern "C" void update_settings_values(void)
     
     // Update buzzer cooldown dropdown
     if (ui_BuzzerCooldownDrop != NULL) {
-        uint16_t sel = 0;
-        if (buzzer_cooldown_sec == 10) sel = 0;
-        else if (buzzer_cooldown_sec == 30) sel = 1;
-        else if (buzzer_cooldown_sec == 60) sel = 2;
-        else if (buzzer_cooldown_sec == 120) sel = 3;
-        else if (buzzer_cooldown_sec == 300) sel = 4;
+        uint16_t sel = 4;   // 60s, matching the options: Constant, 5s, 10s, 30s, 60s
+        if (buzzer_cooldown_sec == 0) sel = 0;
+        else if (buzzer_cooldown_sec == 5) sel = 1;
+        else if (buzzer_cooldown_sec == 10) sel = 2;
+        else if (buzzer_cooldown_sec == 30) sel = 3;
         lv_dropdown_set_selected(ui_BuzzerCooldownDrop, sel);
     }
     
@@ -258,6 +257,7 @@ extern "C" void update_settings_values(void)
         if (auto_scroll_sec == 5) sel = 1;
         else if (auto_scroll_sec == 10) sel = 2;
         else if (auto_scroll_sec == 30) sel = 3;
+        else if (auto_scroll_sec == 60) sel = 4;
         lv_dropdown_set_selected(ui_AutoScrollDrop, sel);
     }
 
@@ -547,7 +547,7 @@ extern "C" void ui_Settings_screen_init(void)
     lv_obj_set_align(ui_AutoScrollLabel, LV_ALIGN_CENTER);
 
     ui_AutoScrollDrop = lv_dropdown_create(ui_SettingsPanel);
-    lv_dropdown_set_options(ui_AutoScrollDrop, "Off\n5s\n10s\n30s");
+    lv_dropdown_set_options(ui_AutoScrollDrop, "Off\n5s\n10s\n30s\n60s");
     lv_obj_set_width(ui_AutoScrollDrop, 140);
     lv_obj_set_height(ui_AutoScrollDrop, 32);
     lv_obj_set_x(ui_AutoScrollDrop, 40);
@@ -568,6 +568,7 @@ extern "C" void ui_Settings_screen_init(void)
     if (auto_scroll_sec == 5) sel = 1;
     else if (auto_scroll_sec == 10) sel = 2;
     else if (auto_scroll_sec == 30) sel = 3;
+    else if (auto_scroll_sec == 60) sel = 4;
     lv_dropdown_set_selected(ui_AutoScrollDrop, sel);
 
     // Event handler: persist and apply
@@ -578,6 +579,8 @@ extern "C" void ui_Settings_screen_init(void)
         if (idx == 1) sec = 5;
         else if (idx == 2) sec = 10;
         else if (idx == 3) sec = 30;
+        else if (idx == 4) sec = 60;
+        auto_scroll_sec = sec;   // keep the web Device page in step
         // Persist to NVS
         Preferences p;
         if (p.begin("settings", false)) {
