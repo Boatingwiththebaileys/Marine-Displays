@@ -345,6 +345,7 @@ static void wsEvent(WStype_t type, uint8_t* payload, size_t length) {
         Serial.println("[SK] WebSocket connected");
         last_message_time = millis();
         current_backoff_ms = RECONNECT_BASE_MS;
+        ws_client.setReconnectInterval(RECONNECT_BASE_MS);
 
         // Subscribe to active screen paths
         int active = get_current_screen();
@@ -416,16 +417,15 @@ static void wsEvent(WStype_t type, uint8_t* payload, size_t length) {
         last_message_time = millis();
     }
 
-    if (type == WStype_DISCONNECTED) {
-        Serial.println("[SK] WebSocket disconnected");
-        current_backoff_ms = RECONNECT_BASE_MS;
-        next_reconnect_at = millis() + RECONNECT_BASE_MS;
-    }
-
-    if (type == WStype_ERROR) {
-        Serial.println("[SK] WebSocket error");
-        current_backoff_ms = RECONNECT_BASE_MS;
-        next_reconnect_at = millis() + RECONNECT_BASE_MS;
+    if (type == WStype_DISCONNECTED || type == WStype_ERROR) {
+        // The library reconnects by itself from ws_client.loop(); we only
+        // stretch its retry interval so a struggling server isn't hammered.
+        Serial.printf("[SK] WebSocket %s (%.*s) — retry in %lus (WiFi %d dBm, iRAM=%u)\n",
+                      type == WStype_ERROR ? "error" : "disconnected",
+                      (int)length, payload ? (const char*)payload : "", current_backoff_ms / 1000,
+                      (int)WiFi.RSSI(), heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
+        ws_client.setReconnectInterval(current_backoff_ms);
+        current_backoff_ms = min(current_backoff_ms * 2, RECONNECT_MAX_MS);
     }
 }
 
@@ -444,6 +444,11 @@ static void signalk_task(void* parameter) {
     vTaskDelay(pdMS_TO_TICKS(500));
 
     while (signalk_enabled) {
+        // Reconnecting is left to ws_client.loop() (setReconnectInterval).
+        // Never call ws_client.begin() again here: begin() drops the library's
+        // socket pointer without closing it, so calling it while a connection
+        // is still being set up leaks that socket and its internal RAM, and
+        // restarts the handshake before it can finish.
         ws_client.loop();
         flush_outgoing();
 
@@ -456,21 +461,6 @@ static void signalk_task(void* parameter) {
             if (now - last_message_time >= MESSAGE_TIMEOUT_MS) {
                 Serial.println("[SK] Idle timeout, forcing reconnect");
                 ws_client.disconnect();
-                unsigned int jitter = (esp_random() & 0x7FF) % 1000;
-                next_reconnect_at = now + current_backoff_ms + jitter;
-                current_backoff_ms = min(current_backoff_ms * 2, RECONNECT_MAX_MS);
-            }
-        } else {
-            if (next_reconnect_at == 0) {
-                next_reconnect_at = now + current_backoff_ms;
-            }
-            if (now >= next_reconnect_at) {
-                Serial.printf("[SK] Reconnecting to %s:%d...\n",
-                              server_ip_str.c_str(), server_port_num);
-                ws_begin_connection();
-                unsigned int jitter = (esp_random() & 0x7FF) % 1000;
-                next_reconnect_at = now + current_backoff_ms + jitter;
-                current_backoff_ms = min(current_backoff_ms * 2, RECONNECT_MAX_MS);
             }
         }
 
@@ -501,7 +491,7 @@ void enable_signalk(const char* server_ip, uint16_t server_port) {
 
     Serial.printf("[SK] Starting WebSocket to %s:%d\n", server_ip, server_port);
     ws_begin_connection();
-    ws_client.setReconnectInterval(0);
+    ws_client.setReconnectInterval(RECONNECT_BASE_MS);   // begin() is called once only
 
     xTaskCreatePinnedToCore(signalk_task, "SignalKWS", 8192, NULL, 3,
                             &signalk_task_handle, 0);

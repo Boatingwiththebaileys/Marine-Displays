@@ -183,6 +183,7 @@ static void wsEvent(WStype_t type, uint8_t * payload, size_t length) {
         last_message_time = millis();
         // reset backoff on successful connect
         current_backoff_ms = RECONNECT_BASE_MS;
+        ws_client.setReconnectInterval(RECONNECT_BASE_MS);
 
         // Subscribe ONLY to the active screen's paths
         int active_scr = ui_get_current_screen();
@@ -277,6 +278,17 @@ static void wsEvent(WStype_t type, uint8_t * payload, size_t length) {
         last_message_time = millis();
         Serial.println("Signal K: received PONG");
     }
+
+    if (type == WStype_DISCONNECTED || type == WStype_ERROR) {
+        // The library reconnects by itself from ws_client.loop(); we only
+        // stretch its retry interval so a struggling server isn't hammered.
+        Serial.printf("[SK] WebSocket %s (%.*s) — retry in %lus (WiFi %d dBm, iRAM=%u)\n",
+                      type == WStype_ERROR ? "error" : "disconnected",
+                      (int)length, payload ? (const char*)payload : "", current_backoff_ms / 1000,
+                      (int)WiFi.RSSI(), heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
+        ws_client.setReconnectInterval(current_backoff_ms);
+        current_backoff_ms = min(current_backoff_ms * 2, RECONNECT_MAX_MS);
+    }
 }
 
 // FreeRTOS task for Signal K updates (runs on core 0)
@@ -286,6 +298,11 @@ static void signalk_task(void *parameter) {
     vTaskDelay(pdMS_TO_TICKS(500));
 
     while (signalk_enabled) {
+        // Reconnecting is left to ws_client.loop() (setReconnectInterval).
+        // Never call ws_client.begin() again here: begin() drops the library's
+        // socket pointer without closing it, so calling it while a connection
+        // is still being set up leaks that socket and its internal RAM, and
+        // restarts the handshake before it can finish.
         ws_client.loop();
 
         unsigned long now = millis();
@@ -303,29 +320,6 @@ static void signalk_task(void *parameter) {
             if (now - last_message_time >= MESSAGE_TIMEOUT_MS) {
                 Serial.println("Signal K: connection idle timeout, forcing disconnect");
                 ws_client.disconnect();
-                // schedule reconnect with current_backoff_ms + jitter
-                unsigned int jitter = (esp_random() & 0x7FF) % 1000; // up to 1s jitter
-                next_reconnect_at = now + current_backoff_ms + jitter;
-                last_reconnect_attempt = now;
-                // increase backoff for next time
-                current_backoff_ms = min(current_backoff_ms * 2, RECONNECT_MAX_MS);
-            }
-        } else {
-            // Not connected: attempt reconnect when scheduled
-            if (next_reconnect_at == 0) {
-                // first time; schedule immediate try
-                next_reconnect_at = now + current_backoff_ms;
-            }
-            if (now >= next_reconnect_at) {
-                Serial.println("Signal K: attempting reconnect...");
-                // re-init client; subscribe=none prevents server firehosing all data
-                ws_client.begin(server_ip_str.c_str(), server_port_num, "/signalk/v1/stream?subscribe=none");
-                ws_client.onEvent(wsEvent);
-                last_reconnect_attempt = now;
-                // schedule next if this fails
-                unsigned int jitter = (esp_random() & 0x7FF) % 1000;
-                next_reconnect_at = now + current_backoff_ms + jitter;
-                current_backoff_ms = min(current_backoff_ms * 2, RECONNECT_MAX_MS);
             }
         }
 
@@ -374,8 +368,7 @@ void enable_signalk(const char* ssid, const char* password, const char* server_i
     // subscribe=none prevents server from firehosing all data on connect
     ws_client.begin(server_ip_str.c_str(), server_port_num, "/signalk/v1/stream?subscribe=none");
     ws_client.onEvent(wsEvent);
-    // We'll manage reconnection with backoff ourselves
-    ws_client.setReconnectInterval(0);
+    ws_client.setReconnectInterval(RECONNECT_BASE_MS);   // begin() is called once only
 
     // Create task to pump ws loop
     xTaskCreatePinnedToCore(
