@@ -156,7 +156,10 @@ static void fmt_angle_side(char* buf, size_t len, float deg) {
 static void layout_field(WindScreen& s, int side);
 
 // ─── Dynamic drawing: pointers and drift arrow ──────────────────────────────
-static void draw_pointer(lv_draw_ctx_t* ctx, float deg, lv_color_t col, const char* letter) {
+// badge_side: sideways shift of the letter badge, so A and T stay readable
+// when the two pointers line up (e.g. boat stopped: true = apparent).
+static void draw_pointer(lv_draw_ctx_t* ctx, float deg, lv_color_t col, const char* letter,
+                         float badge_side = 0) {
     lv_draw_line_dsc_t ld;
     lv_draw_line_dsc_init(&ld);
     ld.color = col; ld.width = 3; ld.round_start = 1; ld.round_end = 1;
@@ -171,7 +174,7 @@ static void draw_pointer(lv_draw_ctx_t* ctx, float deg, lv_color_t col, const ch
     lv_draw_triangle(ctx, &rd, tri);
 
     // Badge at the back of the pointer
-    lv_point_t c = polar(deg, R_BADGE);
+    lv_point_t c = polar_side(deg, R_BADGE, badge_side);
     lv_area_t ba = { (lv_coord_t)(c.x - BADGE_R), (lv_coord_t)(c.y - BADGE_R),
                      (lv_coord_t)(c.x + BADGE_R), (lv_coord_t)(c.y + BADGE_R) };
     rd.radius = LV_RADIUS_CIRCLE;
@@ -202,8 +205,17 @@ static void dyn_draw_cb(lv_event_t* e) {
     if (n < 0 || n >= NUM_SCREENS) return;
     lv_draw_ctx_t* ctx = lv_event_get_draw_ctx(e);
     if (ok(w[n].drift_rel)) draw_drift_arrow(ctx, w[n].drift_rel);
-    if (ok(w[n].twa)) draw_pointer(ctx, w[n].twa, COL_TRUE, "T");
-    if (ok(w[n].awa)) draw_pointer(ctx, w[n].awa, COL_APPARENT, "A");   // apparent on top
+    // Pointers within a few degrees: put the badges side by side
+    float t_side = 0, a_side = 0;
+    if (ok(w[n].twa) && ok(w[n].awa)) {
+        float d = norm180(w[n].twa - w[n].awa);
+        if (fabsf(d) < 8.0f) {
+            t_side = (d >= 0) ? (BADGE_R + 2) : -(BADGE_R + 2);
+            a_side = -t_side;
+        }
+    }
+    if (ok(w[n].twa)) draw_pointer(ctx, w[n].twa, COL_TRUE, "T", t_side);
+    if (ok(w[n].awa)) draw_pointer(ctx, w[n].awa, COL_APPARENT, "A", a_side);   // apparent on top
 }
 
 // ─── Create / destroy ───────────────────────────────────────────────────────
