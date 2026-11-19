@@ -41,7 +41,7 @@
 #define ESP_PANEL_LCD_RGB_TIMING_VPW              (8)    // vsync pulse width
 #define ESP_PANEL_LCD_RGB_TIMING_VBP              (40)   // vsync back porch (increased for stability)
 #define ESP_PANEL_LCD_RGB_TIMING_VFP              (10)   // vsync front porch
-#define ESP_PANEL_LCD_RGB_PCLK_ACTIVE_NEG         (1)     // 1: falling edge (match demo)
+#define ESP_PANEL_LCD_RGB_PCLK_ACTIVE_NEG         (0)     // 0: rising edge. Falling edge (1) gave coloured fringes on text/logo edges
 #define ESP_PANEL_LCD_RGB_DATA_WIDTH              (16)
 #define ESP_PANEL_LCD_RGB_PIXEL_BITS              (16)    // 24 | 18 | 16 (using RGB666 (0x60) to match Arduino demo)
 #define ESP_PANEL_LCD_RGB_FRAME_BUF_NUM           (2)     // Double buffering - display one while writing to other
