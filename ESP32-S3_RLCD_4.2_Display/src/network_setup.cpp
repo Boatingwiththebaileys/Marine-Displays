@@ -20,6 +20,7 @@
 #include "screen_render.h"
 #include "version.h"
 #include "ota_guard.h"
+#include "ota_check.h"
 #include "signalk_config.h"
 #include "unit_convert.h"
 #include "LVGL_Driver.h"
@@ -858,6 +859,8 @@ static void handle_ota_page() {
     html += "<title>OTA Firmware Update</title></head><body><div class='container'>";
     html += "<h2>Firmware Update</h2>";
     html += "<p style='font-size:0.85em;color:#888'>" + String(info) + "</p>";
+    html += ota_check_html("rlcd-42", FW_VERSION);
+    html += "<h3>Or upload a file</h3>";
     html += "<form method='POST' action='/update' enctype='multipart/form-data'>";
     html += "<p>Select the <b>update file</b> for this display, named <code>ota-marine-display-....bin</code>, "
             "from the <a href='https://github.com/Boatingwiththebaileys/Marine-Displays/releases' target='_blank'>GitHub releases</a>. "
