@@ -2,6 +2,12 @@
 
 #include "gauge_config.h"
 #include "version.h"
+#include "ota_guard.h"
+#include "ota_check.h"
+#include "Display_ST7701.h"
+#include <Update.h>
+#include <esp_ota_ops.h>
+#include "esp_task_wdt.h"
 #include <Arduino.h>
 #include <WiFi.h>
 #include <WebServer.h>
@@ -1176,6 +1182,7 @@ void handle_root() {
     html += "<button class='tab-btn' onclick=\"location.href='/needles'\">Needles</button>";
     html += "<button class='tab-btn' onclick=\"location.href='/assets'\">Assets</button>";
     html += "<button class='tab-btn' onclick=\"location.href='/device'\">Device Settings</button>";
+    html += "<button class='tab-btn' onclick=\"location.href='/update'\">Firmware Update</button>";
     html += "</div>"; // root-actions
     html += "<div style='text-align:center;margin-top:18px;font-size:0.8em;color:#888;'>Firmware: " + String(FW_VERSION) + "</div>";
     html += "</div>"; // tab-content
@@ -1495,6 +1502,123 @@ void handle_save_needles() {
 }
 
 
+// ---------------------------------------------------------------------------
+// OTA firmware update handlers
+// ---------------------------------------------------------------------------
+// Checks each upload is an app update for this display (see ota_guard.h)
+static OtaGuard ota_guard;
+
+void handle_ota_upload() {
+    HTTPUpload& upload = config_server.upload();
+    if (upload.status == UPLOAD_FILE_START) {
+        Serial.printf("[OTA] Start: %s\n", upload.filename.c_str());
+        ota_guard.begin();
+        // UPDATE_SIZE_UNKNOWN lets the Update library size from the partition table
+        if (!Update.begin(UPDATE_SIZE_UNKNOWN)) {
+            Update.printError(Serial);
+        }
+    } else if (upload.status == UPLOAD_FILE_WRITE) {
+        esp_task_wdt_reset();
+        if (!ota_guard.feed(upload.buf, upload.currentSize)) {
+            // Wrong kind of file: stop here, nothing more is written.
+            if (Update.isRunning()) {
+                Serial.printf("[OTA] Rejected: %s\n", ota_guard.message());
+                Update.abort();
+            }
+            return;
+        }
+        if (Update.write(upload.buf, upload.currentSize) != upload.currentSize) {
+            Update.printError(Serial);
+        }
+    } else if (upload.status == UPLOAD_FILE_END) {
+        esp_task_wdt_reset();   // end() verifies hash — can take a moment
+        if (!ota_guard.finish()) {
+            Serial.printf("[OTA] Rejected: %s\n", ota_guard.message());
+            if (Update.isRunning()) Update.abort();
+        } else if (Update.end(true)) {
+            Serial.printf("[OTA] Success: %u bytes\n",
+                          (unsigned)upload.totalSize);
+        } else {
+            Update.printError(Serial);
+        }
+    }
+}
+
+void handle_ota_post() {
+    const char* rejected = ota_guard.message();
+    bool ok = !rejected && !Update.hasError();
+    String html = "<!DOCTYPE html><html><head>";
+    html += "<meta charset='UTF-8'>";
+    if (ok) html += "<meta http-equiv='refresh' content='20;url=/'>";
+    html += STYLE;
+    html += "<title>OTA Update</title></head><body><div class='container'>";
+    if (ok) {
+        html += "<h3>Update successful</h3>";
+        html += "<p>Device is rebooting&hellip; page will reload in 20 seconds.</p>";
+    } else {
+        html += "<h3>Update FAILED</h3>";
+        html += "<p>" + String(rejected ? rejected : Update.errorString()) + "</p>";
+        if (rejected) html += "<p>Nothing was changed. The display is still running its current firmware.</p>";
+        html += "<p><a href='/update'>Try again</a></p>";
+    }
+    html += "</div></body></html>";
+    config_server.send(ok ? 200 : 500, "text/html", html);
+
+    if (ok) {
+        // Flush TCP before we kill the radio — client must receive the page first.
+        config_server.client().flush();
+        delay(200);
+
+        // Turn off backlight and stop the display before restarting.
+        // On ESP32-S3 the RGB panel uses continuous GDMA; if a DMA transfer
+        // is in-flight when esp_restart() is called, the hardware can hang
+        // and the restart never completes — visible as the device freezing
+        // with the screen still lit after an OTA upload.
+        extern void Set_Backlight(uint8_t);
+        Set_Backlight(0);
+        extern esp_lcd_panel_handle_t panel_handle;
+        if (panel_handle) esp_lcd_panel_disp_on_off(panel_handle, false);
+        delay(200);
+
+        Serial.println("[OTA] Restarting...");
+        Serial.flush();
+        esp_restart();
+    }
+}
+
+void handle_ota_page() {
+    // Show running partition and free space so the user can sanity-check
+    const esp_partition_t* running = esp_ota_get_running_partition();
+    const esp_partition_t* next    = esp_ota_get_next_update_partition(NULL);
+    char info[128];
+    snprintf(info, sizeof(info),
+             "Running: %s @ 0x%06lX (%lu KB) — Next: %s @ 0x%06lX",
+             running ? running->label : "?",
+             running ? (unsigned long)running->address : 0UL,
+             running ? (unsigned long)(running->size / 1024) : 0UL,
+             next    ? next->label : "none",
+             next    ? (unsigned long)next->address : 0UL);
+
+    String html = "<!DOCTYPE html><html><head><meta charset='UTF-8'>";
+    html += STYLE;
+    html += "<title>OTA Firmware Update</title></head><body><div class='container'>";
+    html += "<h2>Firmware Update</h2>";
+    html += "<p style='font-size:0.85em;color:#888'>" + String(info) + "</p>";
+    html += ota_check_html("round-21", FW_VERSION);
+    html += "<h3>Or upload a file</h3>";
+    html += "<form method='POST' action='/update' enctype='multipart/form-data'>";
+    html += "<p>Select the <b>update file</b> for this display, named <code>ota-marine-display-....bin</code>, "
+            "from the <a href='https://github.com/Boatingwiththebaileys/Marine-Displays/releases' target='_blank'>GitHub releases</a>. "
+            "The installer files (<code>marine-display-....bin</code> without <code>ota-</code>) won't work here.</p>";
+    html += "<input type='file' name='firmware' accept='.bin' required style='margin-bottom:12px'><br>";
+    html += "<input type='submit' value='Upload &amp; Flash' "
+            "onclick=\"this.disabled=true;this.value='Flashing&hellip;';this.form.submit()\">";
+    html += "</form>";
+    html += "<p style='margin-top:20px'><a href='/'>&#8592; Back</a></p>";
+    html += "</div></body></html>";
+    config_server.send(200, "text/html", html);
+}
+
 void setup_network() {
     Serial.begin(115200);
     delay(100);
@@ -1562,6 +1686,8 @@ void setup_network() {
     config_server.on("/scan-wifi", HTTP_GET, handle_scan_wifi);
     config_server.on("/save-wifi", HTTP_POST, handle_save_wifi);
     config_server.on("/device", handle_device_page);
+    config_server.on("/update", HTTP_GET,  handle_ota_page);
+    config_server.on("/update", HTTP_POST, handle_ota_post, handle_ota_upload);
     config_server.on("/save-device", HTTP_POST, handle_save_device);
     config_server.on("/test-gauge", HTTP_POST, handle_test_gauge);
     config_server.on("/toggle-test-mode", HTTP_POST, handle_toggle_test_mode);
