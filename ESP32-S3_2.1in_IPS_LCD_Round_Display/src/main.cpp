@@ -524,6 +524,7 @@ void setup() {
 }
 
 void loop() {
+    buzzer_alert_service();
     config_server.handleClient();
     // Use Signal K data instead of demo animation
     static int16_t needle_angle = 0;
@@ -753,6 +754,7 @@ void loop() {
     }
     Lvgl_Loop();
 
+    buzzer_alert_service();
     // Small delay to prevent excessive loop iterations
     delay(1);
     yield();
