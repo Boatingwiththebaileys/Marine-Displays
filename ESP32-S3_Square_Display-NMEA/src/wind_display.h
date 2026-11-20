@@ -35,7 +35,7 @@ void wind_display_destroy(int screen_num);
 void wind_display_update(int screen_num, const WindInputs* in);
 
 // Bottom fields. side 0 = left, 1 = right.
-// use_default: show the built-in value (left TWS, right TWA); value/unit/desc ignored.
+// use_default: show the built-in value (left TWS, right TWD); value/unit/desc ignored.
 // Otherwise value (NAN shows "--"), unit and description come from the chosen data.
 void wind_display_update_field(int screen_num, int side, int use_default,
                                float value, const char* unit, const char* description);

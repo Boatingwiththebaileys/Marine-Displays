@@ -1471,7 +1471,7 @@ void handle_gauges_screen() {
     html += "<h4>Bottom Fields</h4><div style='display:flex;gap:16px;flex-wrap:wrap;'>";
     {
         const char* posName[2] = {"bl", "br"};
-        const char* title[2]   = {"Bottom-Left (None = TWS)", "Bottom-Right (None = TWA)"};
+        const char* title[2]   = {"Bottom-Left (None = TWS)", "Bottom-Right (None = TWD)"};
         const char* paths[2]   = {screen_configs[s].quad_bl_path, screen_configs[s].quad_br_path};
         const char* cols[2]    = {screen_configs[s].quad_bl_font_color, screen_configs[s].quad_br_font_color};
         for (int f = 0; f < 2; f++) {
@@ -3106,9 +3106,9 @@ void setup_network() {
     Serial.begin(115200);
     delay(100);
     Serial.printf("Flash size (ESP.getFlashChipSize()): %u bytes\n", ESP.getFlashChipSize());
-    if (!SPIFFS.begin(true)) {
-        Serial.println("[ERROR] SPIFFS Mount Failed");
-    }
+    // SPIFFS is not used by this firmware. It used to be mounted here with
+    // format-on-fail, which after a full erase spent ~35 s formatting the
+    // empty partition on first boot, with the display stuck.
     // Note: Do not load preferences here; caller should load before UI init when required.
     // WiFi connect or AP fallback
     WiFi.mode(WIFI_STA);

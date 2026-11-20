@@ -1,11 +1,12 @@
 // wind_display.cpp — built-in wind screen.
 //
-//   Top:      AWS (large), AWA top-left (light blue), TWD top-right (amber)
+//   Top:      AWS (large, centred, "AWS kt" above), AWA top-left (light blue), TWA top-right (amber),
+//             with the side letter (S green / P red) a size smaller
 //   Dial:     0-180° each side of the bow, red/green close-hauled zones (20-60°),
 //             apparent (A) and true (T) pointers with a sharp tip at the scale
 //   Centre:   boat outline with drift speed inside; a short teal arrow circles
 //             the boat, pointing the way the current pushes it (relative to bow)
-//   Bottom:   two fields, TWS and TWA by default, or any data the user picks
+//   Bottom:   two fields, TWS and TWD by default, or any data the user picks
 //
 // True wind and drift are worked out here when the network doesn't send them;
 // values worked out on the display get an amber "calc" tag. Anything missing
@@ -21,18 +22,20 @@
 
 // ─── Geometry ───────────────────────────────────────────────────────────────
 #define CX            240
-#define CY            284     // dial centre sits low so the dial uses the bottom space
-#define R_BAND_OUT    180
-#define BAND_W         24
-#define R_TICK_OUT    176
-#define R_TICK_MAJ    160
-#define R_TICK_MIN    166
-#define R_LABEL       134
-#define R_PTR_TIP     172     // pointer point reaches into the scale
-#define R_PTR_BASE    148
-#define R_PTR_TAIL    112
-#define R_BADGE       100     // A / T badge at the back of the pointer
-#define BADGE_R        11
+#define CY            275     // dial centre: top of the dial sits just under AWS
+#define R_BAND_OUT    190
+#define BAND_W         16
+#define R_TICK_OUT    187
+#define R_TICK_MAJ    172
+#define R_TICK_MIN    178
+#define R_LABEL       148
+#define R_PTR_TIP     186     // pointer point reaches into the scale
+#define R_PTR_BASE    162
+#define R_PTR_TAIL    120
+#define R_PTR_W         5     // pointer line width
+#define R_PTR_HEAD      9     // half-width of the pointer head
+#define R_BADGE       108     // A / T badge at the back of the pointer
+#define BADGE_R        12
 #define R_DRIFT_IN     66     // drift arrow ring, just outside the boat
 #define R_DRIFT_OUT    96
 #define N_TICKS        36
@@ -59,14 +62,15 @@ typedef struct {
     lv_obj_t* tick[N_TICKS];
     lv_obj_t* hull;
     lv_obj_t* aws_val;  lv_obj_t* aws_unit;
-    lv_obj_t* awa_val;
-    lv_obj_t* twd_val;  lv_obj_t* twd_calc;
+    lv_obj_t* awa_val;  lv_obj_t* awa_side;
+    lv_obj_t* twa_val;  lv_obj_t* twa_side; lv_obj_t* twa_calc;
     lv_obj_t* drift_val;
     lv_obj_t* f_desc[2]; lv_obj_t* f_calc[2]; lv_obj_t* f_val[2]; lv_obj_t* f_unit[2];
     // Last drawn dynamic state (NAN = hidden)
     float awa, twa, drift_rel;
     // Latest computed values, used by the default bottom fields
-    float tws_ms, twa_deg; int true_calc;
+    float tws_ms; int true_calc;
+    float twd_deg; int twd_mag, twd_calc;
 } WindScreen;
 
 static WindScreen w[NUM_SCREENS];
@@ -145,12 +149,38 @@ static lv_obj_t* make_arc(lv_obj_t* parent, uint16_t start, uint16_t end, lv_col
     return a;
 }
 
-// "18° S", "45° P", "0°", "180°"
-static void fmt_angle_side(char* buf, size_t len, float deg) {
+// Angle from the bow as "18°" plus a side letter ("S", "P", or "" dead ahead/astern)
+static int angle_side(float deg, const char** side) {
     float a = norm180(deg);
     int v = (int)lroundf(fabsf(a));
-    if (v == 0 || v == 180) snprintf(buf, len, "%d\xc2\xb0", v);
-    else snprintf(buf, len, "%d\xc2\xb0 %s", v, a > 0 ? "S" : "P");
+    *side = (v == 0 || v == 180) ? "" : (a > 0 ? "S" : "P");
+    return v;
+}
+
+static void set_if_changed(lv_obj_t* l, const char* txt);
+
+// Big angle number with a smaller side letter, coloured green (S) / red (P).
+// right: the pair is right-aligned to the screen edge, else left-aligned.
+// Baselines: inter_48 sits 11 px above its box bottom, inter_24 6 px → -5.
+#define TOP_VAL_Y  26
+#define TOP_LBL_Y   3     // top label row (AWA, AWS kt, TWA)
+static void set_angle_pair(lv_obj_t* val, lv_obj_t* side_lbl, float deg, bool right) {
+    char buf[12];
+    const char* side = "";
+    if (ok(deg)) snprintf(buf, sizeof(buf), "%d\xc2\xb0", angle_side(deg, &side));
+    else strcpy(buf, "--");
+    set_if_changed(val, buf);
+    set_if_changed(side_lbl, side);
+    lv_obj_set_style_text_color(side_lbl, side[0] == 'S' ? COL_STBD : COL_PORT, 0);
+    lv_obj_update_layout(val);
+    lv_obj_update_layout(side_lbl);
+    int gap = side[0] ? 4 : 0;
+    if (right) {
+        lv_obj_align(val, LV_ALIGN_TOP_RIGHT, -12 - lv_obj_get_width(side_lbl) - gap, TOP_VAL_Y);
+    } else {
+        lv_obj_set_pos(val, 12, TOP_VAL_Y);
+    }
+    lv_obj_align_to(side_lbl, val, LV_ALIGN_OUT_RIGHT_BOTTOM, gap, -5);
 }
 
 static void layout_field(WindScreen& s, int side);
@@ -162,15 +192,15 @@ static void draw_pointer(lv_draw_ctx_t* ctx, float deg, lv_color_t col, const ch
                          float badge_side = 0) {
     lv_draw_line_dsc_t ld;
     lv_draw_line_dsc_init(&ld);
-    ld.color = col; ld.width = 3; ld.round_start = 1; ld.round_end = 1;
+    ld.color = col; ld.width = R_PTR_W; ld.round_start = 1; ld.round_end = 1;
     lv_point_t a = polar(deg, R_PTR_TAIL), b = polar(deg, R_PTR_BASE);
     lv_draw_line(ctx, &ld, &a, &b);
 
     lv_draw_rect_dsc_t rd;
     lv_draw_rect_dsc_init(&rd);
     rd.bg_color = col; rd.bg_opa = LV_OPA_COVER;
-    lv_point_t tri[3] = { polar(deg, R_PTR_TIP), polar_side(deg, R_PTR_BASE - 2, 7),
-                          polar_side(deg, R_PTR_BASE - 2, -7) };
+    lv_point_t tri[3] = { polar(deg, R_PTR_TIP), polar_side(deg, R_PTR_BASE - 2, R_PTR_HEAD),
+                          polar_side(deg, R_PTR_BASE - 2, -R_PTR_HEAD) };
     lv_draw_triangle(ctx, &rd, tri);
 
     // Badge at the back of the pointer
@@ -329,25 +359,33 @@ void wind_display_create(int n) {
     s.aws_val = make_label(s.bg, &inter_72, lv_color_white(), "--");
     lv_obj_set_width(s.aws_val, 220);
     lv_obj_set_style_text_align(s.aws_val, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_set_pos(s.aws_val, CX - 124, 4);
-    s.aws_unit = make_label(s.bg, &inter_16, COL_LABEL, speed_unit_label());
-    lv_obj_set_pos(s.aws_unit, CX + 64, 26);
-    lv_obj_t* awsl = make_label(s.bg, &inter_16, COL_LABEL, "AWS");
-    lv_obj_set_pos(awsl, CX + 64, 50);
+    lv_obj_set_pos(s.aws_val, CX - 110, 10);    // centred under its label
+    // "AWS kt" centred on the top label row, in line with AWA and TWA
+    s.aws_unit = make_label(s.bg, &inter_16, COL_LABEL, "");
+    lv_obj_set_width(s.aws_unit, 160);
+    lv_obj_set_style_text_align(s.aws_unit, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_pos(s.aws_unit, CX - 80, TOP_LBL_Y);
+    {
+        char t[24]; snprintf(t, sizeof(t), "AWS  %s", speed_unit_label());
+        lv_label_set_text(s.aws_unit, t);
+    }
 
-    // AWA top-left, TWD top-right, each in its pointer's colour
-    lv_obj_t* awal = make_label(s.bg, &inter_16, COL_LABEL_DIM, "AWA");
-    lv_obj_set_pos(awal, 12, 8);
-    s.awa_val = make_label(s.bg, &inter_24, COL_APPARENT, "--");
-    lv_obj_set_pos(s.awa_val, 12, 32);
+    // AWA top-left, TWA top-right, each in its pointer's colour, same size as
+    // the bottom fields
+    lv_obj_t* awal = make_label(s.bg, &inter_16, COL_LABEL, "AWA");
+    lv_obj_set_pos(awal, 12, TOP_LBL_Y);
+    s.awa_val  = make_label(s.bg, &inter_48, COL_APPARENT, "--");
+    s.awa_side = make_label(s.bg, &inter_24, COL_STBD, "");
+    set_angle_pair(s.awa_val, s.awa_side, NAN, false);
 
-    lv_obj_t* twdl = make_label(s.bg, &inter_16, COL_LABEL_DIM, "TWD");
-    lv_obj_align(twdl, LV_ALIGN_TOP_RIGHT, -12, 8);
-    s.twd_calc = make_label(s.bg, &inter_16, COL_TRUE, "calc");
-    lv_obj_align_to(s.twd_calc, twdl, LV_ALIGN_OUT_LEFT_MID, -6, 0);
-    lv_obj_add_flag(s.twd_calc, LV_OBJ_FLAG_HIDDEN);
-    s.twd_val = make_label(s.bg, &inter_24, COL_TRUE, "--");
-    lv_obj_align(s.twd_val, LV_ALIGN_TOP_RIGHT, -12, 32);
+    lv_obj_t* twal = make_label(s.bg, &inter_16, COL_LABEL, "TWA");
+    lv_obj_align(twal, LV_ALIGN_TOP_RIGHT, -12, TOP_LBL_Y);
+    s.twa_calc = make_label(s.bg, &inter_16, COL_TRUE, "calc");
+    lv_obj_align_to(s.twa_calc, twal, LV_ALIGN_OUT_LEFT_MID, -6, 0);
+    lv_obj_add_flag(s.twa_calc, LV_OBJ_FLAG_HIDDEN);
+    s.twa_val  = make_label(s.bg, &inter_48, COL_TRUE, "--");
+    s.twa_side = make_label(s.bg, &inter_24, COL_STBD, "");
+    set_angle_pair(s.twa_val, s.twa_side, NAN, true);
 
     // Bottom fields
     for (int side = 0; side < 2; side++) {
@@ -360,7 +398,7 @@ void wind_display_create(int n) {
         int dx = side == 0 ? 12 : -12;
 
         s.f_val[side] = make_label(s.bg, vf, col, "--");
-        lv_obj_align(s.f_val[side], al, dx, 4);
+        lv_obj_align(s.f_val[side], al, dx, 4);   // right side is re-placed in layout_field
         s.f_unit[side] = make_label(s.bg, &inter_16, COL_LABEL, "");
         s.f_desc[side] = make_label(s.bg, &inter_16, COL_LABEL, "");
         s.f_calc[side] = make_label(s.bg, &inter_16, COL_TRUE, "calc");
@@ -369,8 +407,8 @@ void wind_display_create(int n) {
     }
 
     s.awa = s.twa = s.drift_rel = NAN;
-    s.tws_ms = s.twa_deg = NAN;
-    s.true_calc = 0;
+    s.tws_ms = s.twd_deg = NAN;
+    s.true_calc = s.twd_mag = s.twd_calc = 0;
 }
 
 void wind_display_destroy(int n) {
@@ -390,8 +428,14 @@ static void layout_field(WindScreen& s, int side) {
         lv_obj_align_to(s.f_desc[side], s.f_val[side], LV_ALIGN_OUT_TOP_LEFT, 0, 6);
         lv_obj_align_to(s.f_calc[side], s.f_desc[side], LV_ALIGN_OUT_RIGHT_MID, 6, 0);
     } else {
-        lv_obj_align_to(s.f_unit[side], s.f_val[side], LV_ALIGN_OUT_LEFT_BOTTOM, -4, -12);
-        lv_obj_align_to(s.f_desc[side], s.f_val[side], LV_ALIGN_OUT_TOP_RIGHT, 0, 6);
+        // Unit sits after the number, against the right edge ("239° M", "5.2 m")
+        bool has_unit = lv_label_get_text(s.f_unit[side])[0] != '\0';
+        int unit_w = has_unit ? lv_obj_get_width(s.f_unit[side]) + 4 : 0;
+        lv_obj_align(s.f_val[side], LV_ALIGN_BOTTOM_RIGHT, -12 - unit_w, 4);
+        lv_obj_align_to(s.f_unit[side], s.f_val[side], LV_ALIGN_OUT_RIGHT_BOTTOM, 4, -12);
+        lv_obj_update_layout(s.f_val[side]);
+        lv_obj_align(s.f_desc[side], LV_ALIGN_TOP_RIGHT, -12,
+                     lv_obj_get_y(s.f_val[side]) - lv_obj_get_height(s.f_desc[side]) + 6);
         lv_obj_align_to(s.f_calc[side], s.f_desc[side], LV_ALIGN_OUT_LEFT_MID, -6, 0);
     }
 }
@@ -468,23 +512,22 @@ void wind_display_update(int n, const WindInputs* in) {
     // ── Text ──
     if (ok(aws)) snprintf(buf, sizeof(buf), "%.1f", convert_speed(aws)); else strcpy(buf, "--");
     set_if_changed(s.aws_val, buf);
-    set_if_changed(s.aws_unit, speed_unit_label());
+    {
+        char t[24]; snprintf(t, sizeof(t), "AWS  %s", speed_unit_label());
+        set_if_changed(s.aws_unit, t);
+    }
 
-    if (ok(awa)) fmt_angle_side(buf, sizeof(buf), awa); else strcpy(buf, "--");
-    set_if_changed(s.awa_val, buf);
-
-    if (ok(twd)) snprintf(buf, sizeof(buf), "%03d\xc2\xb0 %s", (int)lroundf(twd) % 360, twd_mag ? "M" : "T");
-    else strcpy(buf, "--");
-    set_if_changed(s.twd_val, buf);
-    lv_obj_align(s.twd_val, LV_ALIGN_TOP_RIGHT, -12, 32);
-    if (twd_calc) lv_obj_clear_flag(s.twd_calc, LV_OBJ_FLAG_HIDDEN);
-    else          lv_obj_add_flag(s.twd_calc, LV_OBJ_FLAG_HIDDEN);
+    set_angle_pair(s.awa_val, s.awa_side, awa, false);
+    set_angle_pair(s.twa_val, s.twa_side, twa, true);
+    if (true_calc && ok(twa)) lv_obj_clear_flag(s.twa_calc, LV_OBJ_FLAG_HIDDEN);
+    else                      lv_obj_add_flag(s.twa_calc, LV_OBJ_FLAG_HIDDEN);
 
     if (ok(drift)) snprintf(buf, sizeof(buf), "%.1f", convert_speed(drift)); else strcpy(buf, "--");
     set_if_changed(s.drift_val, buf);
 
     // Remember for the default bottom fields
-    s.tws_ms = tws; s.twa_deg = twa; s.true_calc = true_calc;
+    s.tws_ms = tws; s.true_calc = true_calc;
+    s.twd_deg = twd; s.twd_mag = twd_mag; s.twd_calc = twd_calc;
 
     // ── Redraw pointers / arrow only when they move by a degree or more ──
     auto moved = [](float a, float b) {
@@ -513,12 +556,15 @@ void wind_display_update_field(int n, int side, int use_default,
             d = "TWS";
             if (ok(s.tws_ms)) { snprintf(vbuf, sizeof(vbuf), "%.1f", convert_speed(s.tws_ms)); u = speed_unit_label(); }
             else strcpy(vbuf, "--");
+            calc = s.true_calc && ok(s.tws_ms);
         } else {
-            d = "TWA";
-            if (ok(s.twa_deg)) fmt_angle_side(vbuf, sizeof(vbuf), s.twa_deg);
-            else strcpy(vbuf, "--");
+            d = "TWD";
+            if (ok(s.twd_deg)) {
+                snprintf(vbuf, sizeof(vbuf), "%03d\xc2\xb0", (int)lroundf(s.twd_deg) % 360);
+                u = s.twd_mag ? "M" : "T";
+            } else strcpy(vbuf, "--");
+            calc = s.twd_calc && ok(s.twd_deg);
         }
-        calc = s.true_calc && ok(s.tws_ms);
     } else {
         if (isnan(value)) strcpy(vbuf, "--");
         else snprintf(vbuf, sizeof(vbuf), "%.1f", value);

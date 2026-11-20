@@ -1499,9 +1499,9 @@ void setup_network() {
     Serial.begin(115200);
     delay(100);
     Serial.printf("Flash size (ESP.getFlashChipSize()): %u bytes\n", ESP.getFlashChipSize());
-    if (!SPIFFS.begin(true)) {
-        Serial.println("[ERROR] SPIFFS Mount Failed");
-    }
+    // SPIFFS is not used by this firmware. It used to be mounted here with
+    // format-on-fail, which after a full erase spent ~35 s formatting the
+    // empty partition on first boot, with the display stuck.
     // Note: Do not load preferences here; caller should load before UI init when required.
     // WiFi connect or AP fallback
     WiFi.mode(WIFI_STA);
