@@ -23,6 +23,7 @@ void quad_number_display_update_tl(int screen_num, float value, const char* unit
 void quad_number_display_update_tr(int screen_num, float value, const char* unit, const char* description);
 void quad_number_display_update_bl(int screen_num, float value, const char* unit, const char* description);
 void quad_number_display_update_br(int screen_num, float value, const char* unit, const char* description);
+void quad_number_display_update_text(int screen_num, int q, const char* text, const char* unit, const char* description);
 
 #ifdef __cplusplus
 }

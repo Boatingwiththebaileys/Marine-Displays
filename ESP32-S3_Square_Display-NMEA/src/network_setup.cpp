@@ -1352,7 +1352,7 @@ void handle_gauges_screen() {
 
     // Display Type dropdown
     html += "<div style='margin-bottom:16px;'><label>Display Type: <select name='displaytype_" + String(s) + "' id='displaytype_" + String(s) + "' onchange='toggleGaugeConfig(" + String(s) + ")'>";
-    const char* dtNames[] = {"Gauge","Number","Dual","Quad","Gauge + Number","Graph","Compass","Position","AIS","Attitude","Anchor Alarm","Wind"};
+    const char* dtNames[] = {"Gauge","Single Value","Dual Value","Quad Value","Gauge + Value","Graph","Compass","Position","AIS","Attitude","Anchor Alarm","Wind"};
     for (int dt = 0; dt < 12; ++dt) {
         html += "<option value='" + String(dt) + "'";
         if (displayType == dt) html += " selected";
@@ -1391,7 +1391,7 @@ void handle_gauges_screen() {
 
     // ── Number display config ────────────────────────────────────────
     if (displayType == DISPLAY_TYPE_NUMBER) {
-    html += "<h4>Number Display Settings</h4>";
+    html += "<h4>Single Value Settings</h4>";
     flushHtml();
     html += "<div style='margin-bottom:8px;'><label>NMEA 2000 Field: ";
     n2k_select(html, "number_path_" + String(s), screen_configs[s].number_path);
@@ -1490,7 +1490,7 @@ void handle_gauges_screen() {
 
     // ── Dual display config ──────────────────────────────────────────
     if (displayType == DISPLAY_TYPE_DUAL) {
-    html += "<h4>Dual Display Settings</h4>";
+    html += "<h4>Dual Value Settings</h4>";
     html += "<div id='dual_bg_color_div_" + String(s) + "' style='margin-bottom:8px;display:" + String(isCustomColor ? "block" : "none") + ";'>";
     html += "<label>Background Color: <input name='dual_bg_color_" + String(s) + "' type='color' value='" + String(screen_configs[s].number_bg_color[0] ? screen_configs[s].number_bg_color : "#000000") + "'></label></div>";
     // Top
@@ -1557,7 +1557,7 @@ void handle_gauges_screen() {
 
     // ── Quad display config ──────────────────────────────────────────
     if (displayType == DISPLAY_TYPE_QUAD) {
-    html += "<h4>Quad Display Settings</h4>";
+    html += "<h4>Quad Value Settings</h4>";
     html += "<div style='margin-bottom:8px;'><label>Background Color: <input name='quad_bg_color_" + String(s) + "' type='color' value='" + String(screen_configs[s].number_bg_color[0] ? screen_configs[s].number_bg_color : "#000000") + "'></label></div>";
     // Quad quadrant helper
     auto addQuadrantHTML = [&](const char* name, const char* label, char* path, uint8_t size, char* color, int g_alm, int zl, int zh, int lslot) {
@@ -1688,7 +1688,7 @@ void handle_gauges_screen() {
 
     // ── Gauge + Number config ────────────────────────────────────────
     if (displayType == DISPLAY_TYPE_GAUGE_NUMBER) {
-    html += "<h4>Center Number Display</h4>";
+    html += "<h4>Centre Value</h4>";
     flushHtml();
     html += "<div style='margin-bottom:8px;'><label>NMEA 2000 Field: ";
     n2k_select(html, "gauge_num_center_path_" + String(s), screen_configs[s].gauge_num_center_path);
@@ -3007,7 +3007,7 @@ void handle_needles_page() {
     html += "<form method='POST' action='/save-needles'>";
     // Screen/gauge selectors. Changing either reloads the page so the fields
     // show that needle's settings (otherwise Save would copy the old values).
-    static const char* const dtNames[] = {"Gauge","Number","Dual","Quad","Gauge + Number","Graph","Compass","Position","AIS","Attitude","Anchor Alarm","Wind"};
+    static const char* const dtNames[] = {"Gauge","Single Value","Dual Value","Quad Value","Gauge + Value","Graph","Compass","Position","AIS","Attitude","Anchor Alarm","Wind"};
     const int dtCount = sizeof(dtNames) / sizeof(dtNames[0]);
     auto typeName = [&](int s) -> String {
         int t = screen_configs[s].display_type;
@@ -3030,7 +3030,7 @@ void handle_needles_page() {
         String n = String(screen + 1);
         String note;
         if (t == DISPLAY_TYPE_GAUGE_NUMBER && gauge == 1)
-            note = "Screen " + n + " is a Gauge + Number screen, which has only the top needle.";
+            note = "Screen " + n + " is a Gauge + Value screen, which has only the top needle.";
         else if (t == DISPLAY_TYPE_GAUGE && gauge == 1 && !screen_configs[screen].show_bottom)
             note = "The bottom gauge is switched off on screen " + n + ", so this needle isn't shown.";
         else if (t != DISPLAY_TYPE_GAUGE && t != DISPLAY_TYPE_GAUGE_NUMBER)

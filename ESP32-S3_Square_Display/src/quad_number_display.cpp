@@ -3,6 +3,8 @@
 #include "ui.h"
 #include <stdio.h>
 #include <esp_attr.h>
+#include "value_label.h"
+#include <math.h>
 
 // Storage for quad display components (top-left, top-right, bottom-left, bottom-right for each screen)
 static lv_obj_t* quad_tl_labels[NUM_SCREENS] = {nullptr};
@@ -35,6 +37,8 @@ static lv_obj_t* get_screen_obj(int screen_num) {
 // Previous values for change detection
 // EXT_RAM_ATTR → PSRAM, freeing ~4.5 KB of internal RAM
 EXT_RAM_ATTR static char prev_quad_tl_text[NUM_SCREENS][64];
+// Font chosen in settings for each quadrant (TL, TR, BL, BR)
+static const lv_font_t* quad_cfg_font[NUM_SCREENS][4] = {{NULL}};
 EXT_RAM_ATTR static char prev_quad_tl_unit[NUM_SCREENS][32];
 EXT_RAM_ATTR static char prev_quad_tl_description[NUM_SCREENS][128];
 EXT_RAM_ATTR static char prev_quad_tr_text[NUM_SCREENS][64];
@@ -140,6 +144,7 @@ void quad_number_display_create(int screen_num,
     lv_label_set_long_mode(quad_tl_labels[screen_num], LV_LABEL_LONG_CLIP);
     lv_obj_set_style_text_align(quad_tl_labels[screen_num], LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_set_style_text_font(quad_tl_labels[screen_num], get_font_for_size(tl_font_size), 0);
+    quad_cfg_font[screen_num][0] = get_font_for_size(tl_font_size);
     lv_obj_set_style_text_color(quad_tl_labels[screen_num], parse_hex_color(tl_font_color), 0);
     lv_obj_set_style_transform_pivot_x(quad_tl_labels[screen_num], LV_PCT(50), 0);
     lv_obj_set_style_transform_pivot_y(quad_tl_labels[screen_num], LV_PCT(50), 0);
@@ -176,6 +181,7 @@ void quad_number_display_create(int screen_num,
     lv_label_set_long_mode(quad_tr_labels[screen_num], LV_LABEL_LONG_CLIP);
     lv_obj_set_style_text_align(quad_tr_labels[screen_num], LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_set_style_text_font(quad_tr_labels[screen_num], get_font_for_size(tr_font_size), 0);
+    quad_cfg_font[screen_num][1] = get_font_for_size(tr_font_size);
     lv_obj_set_style_text_color(quad_tr_labels[screen_num], parse_hex_color(tr_font_color), 0);
     lv_obj_set_style_transform_pivot_x(quad_tr_labels[screen_num], LV_PCT(50), 0);
     lv_obj_set_style_transform_pivot_y(quad_tr_labels[screen_num], LV_PCT(50), 0);
@@ -212,6 +218,7 @@ void quad_number_display_create(int screen_num,
     lv_label_set_long_mode(quad_bl_labels[screen_num], LV_LABEL_LONG_CLIP);
     lv_obj_set_style_text_align(quad_bl_labels[screen_num], LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_set_style_text_font(quad_bl_labels[screen_num], get_font_for_size(bl_font_size), 0);
+    quad_cfg_font[screen_num][2] = get_font_for_size(bl_font_size);
     lv_obj_set_style_text_color(quad_bl_labels[screen_num], parse_hex_color(bl_font_color), 0);
     lv_obj_set_style_transform_pivot_x(quad_bl_labels[screen_num], LV_PCT(50), 0);
     lv_obj_set_style_transform_pivot_y(quad_bl_labels[screen_num], LV_PCT(50), 0);
@@ -248,6 +255,7 @@ void quad_number_display_create(int screen_num,
     lv_label_set_long_mode(quad_br_labels[screen_num], LV_LABEL_LONG_CLIP);
     lv_obj_set_style_text_align(quad_br_labels[screen_num], LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_set_style_text_font(quad_br_labels[screen_num], get_font_for_size(br_font_size), 0);
+    quad_cfg_font[screen_num][3] = get_font_for_size(br_font_size);
     lv_obj_set_style_text_color(quad_br_labels[screen_num], parse_hex_color(br_font_color), 0);
     lv_obj_set_style_transform_pivot_x(quad_br_labels[screen_num], LV_PCT(50), 0);
     lv_obj_set_style_transform_pivot_y(quad_br_labels[screen_num], LV_PCT(50), 0);
@@ -300,97 +308,52 @@ void quad_number_display_destroy(int screen_num) {
     prev_quad_br_description[screen_num][0] = '\0';
 }
 
-void quad_number_display_update_tl(int screen_num, float value, const char* unit, const char* description) {
-    if (screen_num < 0 || screen_num >= NUM_SCREENS) return;
-    if (!quad_tl_labels[screen_num]) return;
-    
-    char value_text[64];
-    snprintf(value_text, sizeof(value_text), "%.1f", value);
-    
-    // Only update if value changed
-    if (strcmp(value_text, prev_quad_tl_text[screen_num]) != 0) {
-        lv_label_set_text(quad_tl_labels[screen_num], value_text);
-        strncpy(prev_quad_tl_text[screen_num], value_text, sizeof(prev_quad_tl_text[screen_num]) - 1);
+// Shared by numbers and text. q: 0 TL, 1 TR, 2 BL, 3 BR
+static void quad_apply(int screen_num, int q, const char* text, bool is_text,
+                       const char* unit, const char* description) {
+    if (screen_num < 0 || screen_num >= NUM_SCREENS || q < 0 || q > 3) return;
+    lv_obj_t* vals[4]  = {quad_tl_labels[screen_num], quad_tr_labels[screen_num], quad_bl_labels[screen_num], quad_br_labels[screen_num]};
+    lv_obj_t* units[4] = {quad_tl_unit_labels[screen_num], quad_tr_unit_labels[screen_num], quad_bl_unit_labels[screen_num], quad_br_unit_labels[screen_num]};
+    lv_obj_t* descs[4] = {quad_tl_description_labels[screen_num], quad_tr_description_labels[screen_num], quad_bl_description_labels[screen_num], quad_br_description_labels[screen_num]};
+    char* ptext[4] = {prev_quad_tl_text[screen_num], prev_quad_tr_text[screen_num], prev_quad_bl_text[screen_num], prev_quad_br_text[screen_num]};
+    char* punit[4] = {prev_quad_tl_unit[screen_num], prev_quad_tr_unit[screen_num], prev_quad_bl_unit[screen_num], prev_quad_br_unit[screen_num]};
+    char* pdesc[4] = {prev_quad_tl_description[screen_num], prev_quad_tr_description[screen_num], prev_quad_bl_description[screen_num], prev_quad_br_description[screen_num]};
+    static const lv_coord_t X[4] = {10, 250, 10, 250};    // value label positions (see create)
+    static const lv_coord_t Y[4] = {100, 100, 340, 340};
+    if (!vals[q]) return;
+    if (!unit) unit = "";
+    if (!description) description = "";
+
+    if (strcmp(text, ptext[q]) != 0) {
+        const lv_font_t* cfg = quad_cfg_font[screen_num][q] ? quad_cfg_font[screen_num][q] : &inter_48;
+        const lv_font_t* f = set_value_label(vals[q], text, is_text, cfg, 220);
+        // A smaller font for long text stays centred where the number would be
+        lv_obj_align(vals[q], LV_ALIGN_TOP_LEFT, X[q], Y[q] + (cfg->line_height - f->line_height) / 2);
+        strncpy(ptext[q], text, 63); ptext[q][63] = '\0';
     }
-    
-    // Only update if unit changed
-    if (strcmp(unit, prev_quad_tl_unit[screen_num]) != 0) {
-        lv_label_set_text(quad_tl_unit_labels[screen_num], unit);
-        strncpy(prev_quad_tl_unit[screen_num], unit, sizeof(prev_quad_tl_unit[screen_num]) - 1);
+    if (strcmp(unit, punit[q]) != 0) {
+        lv_label_set_text(units[q], unit);
+        strncpy(punit[q], unit, 31); punit[q][31] = '\0';
     }
-    
-    // Only update if description changed
-    if (strcmp(description, prev_quad_tl_description[screen_num]) != 0) {
-        lv_label_set_text(quad_tl_description_labels[screen_num], description);
-        strncpy(prev_quad_tl_description[screen_num], description, sizeof(prev_quad_tl_description[screen_num]) - 1);
+    if (strcmp(description, pdesc[q]) != 0) {
+        lv_label_set_text(descs[q], description);
+        strncpy(pdesc[q], description, 127); pdesc[q][127] = '\0';
     }
 }
 
-void quad_number_display_update_tr(int screen_num, float value, const char* unit, const char* description) {
-    if (screen_num < 0 || screen_num >= NUM_SCREENS) return;
-    if (!quad_tr_labels[screen_num]) return;
-    
+static void quad_update_number(int screen_num, int q, float value, const char* unit, const char* description) {
     char value_text[64];
-    snprintf(value_text, sizeof(value_text), "%.1f", value);
-    
-    if (strcmp(value_text, prev_quad_tr_text[screen_num]) != 0) {
-        lv_label_set_text(quad_tr_labels[screen_num], value_text);
-        strncpy(prev_quad_tr_text[screen_num], value_text, sizeof(prev_quad_tr_text[screen_num]) - 1);
-    }
-    
-    if (strcmp(unit, prev_quad_tr_unit[screen_num]) != 0) {
-        lv_label_set_text(quad_tr_unit_labels[screen_num], unit);
-        strncpy(prev_quad_tr_unit[screen_num], unit, sizeof(prev_quad_tr_unit[screen_num]) - 1);
-    }
-    
-    if (strcmp(description, prev_quad_tr_description[screen_num]) != 0) {
-        lv_label_set_text(quad_tr_description_labels[screen_num], description);
-        strncpy(prev_quad_tr_description[screen_num], description, sizeof(prev_quad_tr_description[screen_num]) - 1);
-    }
+    if (isnan(value)) strcpy(value_text, "--");     // no data
+    else              snprintf(value_text, sizeof(value_text), "%.1f", value);
+    quad_apply(screen_num, q, value_text, false, unit, description);
 }
 
-void quad_number_display_update_bl(int screen_num, float value, const char* unit, const char* description) {
-    if (screen_num < 0 || screen_num >= NUM_SCREENS) return;
-    if (!quad_bl_labels[screen_num]) return;
-    
-    char value_text[64];
-    snprintf(value_text, sizeof(value_text), "%.1f", value);
-    
-    if (strcmp(value_text, prev_quad_bl_text[screen_num]) != 0) {
-        lv_label_set_text(quad_bl_labels[screen_num], value_text);
-        strncpy(prev_quad_bl_text[screen_num], value_text, sizeof(prev_quad_bl_text[screen_num]) - 1);
-    }
-    
-    if (strcmp(unit, prev_quad_bl_unit[screen_num]) != 0) {
-        lv_label_set_text(quad_bl_unit_labels[screen_num], unit);
-        strncpy(prev_quad_bl_unit[screen_num], unit, sizeof(prev_quad_bl_unit[screen_num]) - 1);
-    }
-    
-    if (strcmp(description, prev_quad_bl_description[screen_num]) != 0) {
-        lv_label_set_text(quad_bl_description_labels[screen_num], description);
-        strncpy(prev_quad_bl_description[screen_num], description, sizeof(prev_quad_bl_description[screen_num]) - 1);
-    }
-}
+void quad_number_display_update_tl(int screen_num, float value, const char* unit, const char* description) { quad_update_number(screen_num, 0, value, unit, description); }
+void quad_number_display_update_tr(int screen_num, float value, const char* unit, const char* description) { quad_update_number(screen_num, 1, value, unit, description); }
+void quad_number_display_update_bl(int screen_num, float value, const char* unit, const char* description) { quad_update_number(screen_num, 2, value, unit, description); }
+void quad_number_display_update_br(int screen_num, float value, const char* unit, const char* description) { quad_update_number(screen_num, 3, value, unit, description); }
 
-void quad_number_display_update_br(int screen_num, float value, const char* unit, const char* description) {
-    if (screen_num < 0 || screen_num >= NUM_SCREENS) return;
-    if (!quad_br_labels[screen_num]) return;
-    
-    char value_text[64];
-    snprintf(value_text, sizeof(value_text), "%.1f", value);
-    
-    if (strcmp(value_text, prev_quad_br_text[screen_num]) != 0) {
-        lv_label_set_text(quad_br_labels[screen_num], value_text);
-        strncpy(prev_quad_br_text[screen_num], value_text, sizeof(prev_quad_br_text[screen_num]) - 1);
-    }
-    
-    if (strcmp(unit, prev_quad_br_unit[screen_num]) != 0) {
-        lv_label_set_text(quad_br_unit_labels[screen_num], unit);
-        strncpy(prev_quad_br_unit[screen_num], unit, sizeof(prev_quad_br_unit[screen_num]) - 1);
-    }
-    
-    if (strcmp(description, prev_quad_br_description[screen_num]) != 0) {
-        lv_label_set_text(quad_br_description_labels[screen_num], description);
-        strncpy(prev_quad_br_description[screen_num], description, sizeof(prev_quad_br_description[screen_num]) - 1);
-    }
+// Text value (e.g. "motoring") for quadrant q (0 TL, 1 TR, 2 BL, 3 BR)
+void quad_number_display_update_text(int screen_num, int q, const char* text, const char* unit, const char* description) {
+    quad_apply(screen_num, q, text ? text : "--", true, unit, description);
 }

@@ -12,6 +12,8 @@ void dual_number_display_create(int screen_num,
 // Update dual number displays with new values, units, and descriptions
 void dual_number_display_update_top(int screen_num, float value, const char* unit, const char* description);
 void dual_number_display_update_bottom(int screen_num, float value, const char* unit, const char* description);
+void dual_number_display_update_top_text(int screen_num, const char* text, const char* unit, const char* description);
+void dual_number_display_update_bottom_text(int screen_num, const char* text, const char* unit, const char* description);
 
 // Destroy dual number displays for a screen
 void dual_number_display_destroy(int screen_num);

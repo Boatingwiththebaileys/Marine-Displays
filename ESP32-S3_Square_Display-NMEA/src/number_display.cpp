@@ -4,6 +4,8 @@
 #include "unit_convert.h"
 #include <Arduino.h>
 #include <esp_attr.h>
+#include "value_label.h"
+#include <math.h>
 
 // Storage for number display labels (one per screen)
 static lv_obj_t* number_labels[NUM_SCREENS] = {NULL, NULL, NULL, NULL, NULL};
@@ -13,7 +15,8 @@ static lv_obj_t* bg_panels[NUM_SCREENS] = {NULL, NULL, NULL, NULL, NULL};
 
 // Previous values for change detection to avoid unnecessary redraws
 // EXT_RAM_ATTR → PSRAM, freeing ~960 bytes of internal RAM
-EXT_RAM_ATTR static char prev_number_text[NUM_SCREENS][32];
+EXT_RAM_ATTR static char prev_number_text[NUM_SCREENS][64];
+static const lv_font_t* number_cfg_font[NUM_SCREENS] = {NULL};  // font chosen in settings
 EXT_RAM_ATTR static char prev_unit_text[NUM_SCREENS][32];
 EXT_RAM_ATTR static char prev_description_text[NUM_SCREENS][128];
 
@@ -109,6 +112,7 @@ void number_display_create(int screen_num) {
         unit_font  = &inter_72;
     }
     // zoom_scale stays at 256 (1x) for all sizes - no scaling needed
+    number_cfg_font[screen_num] = value_font;
     
     // Get font color
     lv_color_t font_color = hex_to_lv_color(cfg.number_font_color);
@@ -149,21 +153,19 @@ void number_display_create(int screen_num) {
     lv_obj_add_flag(unit_labels[screen_num], LV_OBJ_FLAG_IGNORE_LAYOUT);
 }
 
-void number_display_update(int screen_num, float value, const char* unit, const char* description) {
+// Shared by numbers and text: set value, unit and description labels
+static void number_display_apply(int screen_num, const char* text, bool is_text,
+                                 const char* unit, const char* description) {
     if (screen_num < 0 || screen_num >= NUM_SCREENS) return;
     if (!number_labels[screen_num]) return;
-    
-    // Format the number with appropriate precision for this sensor type
-    char buf[32];
-    format_display_value(buf, sizeof(buf), value, description);
-    
+
     // Only update if value changed to avoid unnecessary redraws
-    if (strcmp(buf, prev_number_text[screen_num]) != 0) {
-        lv_label_set_text(number_labels[screen_num], buf);
-        strncpy(prev_number_text[screen_num], buf, sizeof(prev_number_text[screen_num]) - 1);
-        // Note: Removed re-align to prevent jumping - label is already centered at creation
+    if (strcmp(text, prev_number_text[screen_num]) != 0) {
+        const lv_font_t* cfg = number_cfg_font[screen_num] ? number_cfg_font[screen_num] : &inter_48;
+        set_value_label(number_labels[screen_num], text, is_text, cfg, 460);
+        strncpy(prev_number_text[screen_num], text, sizeof(prev_number_text[screen_num]) - 1);
+        prev_number_text[screen_num][sizeof(prev_number_text[screen_num]) - 1] = '\0';
     }
-    
     // Update unit if provided and changed
     if (unit && unit_labels[screen_num]) {
         if (strcmp(unit, prev_unit_text[screen_num]) != 0) {
@@ -179,6 +181,24 @@ void number_display_update(int screen_num, float value, const char* unit, const 
             strncpy(prev_description_text[screen_num], description, sizeof(prev_description_text[screen_num]) - 1);
         }
     }
+}
+
+void number_display_update(int screen_num, float value, const char* unit, const char* description) {
+    if (screen_num < 0 || screen_num >= NUM_SCREENS) return;
+    if (!number_labels[screen_num]) return;
+
+    char buf[32];
+    if (isnan(value)) {
+        strcpy(buf, "--");          // no data
+    } else {
+        format_display_value(buf, sizeof(buf), value, description);
+    }
+    number_display_apply(screen_num, buf, false, unit, description);
+}
+
+// Text value (e.g. "motoring"): shown as-is, in a smaller font if needed to fit
+void number_display_update_text(int screen_num, const char* text, const char* unit, const char* description) {
+    number_display_apply(screen_num, text ? text : "--", true, unit, description);
 }
 
 void number_display_destroy(int screen_num) {

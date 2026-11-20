@@ -3,6 +3,8 @@
 #include "ui.h"
 #include <stdio.h>
 #include <esp_attr.h>
+#include "value_label.h"
+#include <math.h>
 
 // Storage for dual display components (top and bottom for each screen)
 static lv_obj_t* dual_top_labels[NUM_SCREENS] = {nullptr};
@@ -29,6 +31,8 @@ static lv_obj_t* get_screen_obj(int screen_num) {
 // Previous values for change detection
 // EXT_RAM_ATTR → PSRAM, freeing ~2.2 KB of internal RAM
 EXT_RAM_ATTR static char prev_dual_top_text[NUM_SCREENS][64];
+// Font chosen in settings for each half ([0] top, [1] bottom)
+static const lv_font_t* dual_cfg_font[NUM_SCREENS][2] = {{NULL}};
 EXT_RAM_ATTR static char prev_dual_top_unit[NUM_SCREENS][32];
 EXT_RAM_ATTR static char prev_dual_top_description[NUM_SCREENS][128];
 EXT_RAM_ATTR static char prev_dual_bottom_text[NUM_SCREENS][64];
@@ -103,6 +107,9 @@ void dual_number_display_create(int screen_num,
     lv_obj_clear_flag(dual_bg_panels[screen_num], LV_OBJ_FLAG_CLICKABLE);  // Allow swipe through
     lv_obj_clear_flag(dual_bg_panels[screen_num], LV_OBJ_FLAG_SCROLLABLE);
     
+    dual_cfg_font[screen_num][0] = get_font_for_size(top_font_size);
+    dual_cfg_font[screen_num][1] = get_font_for_size(bottom_font_size);
+
     // TOP DISPLAY (y: 0-240)
     // Top description label (top-left of top half)
     dual_top_description_labels[screen_num] = lv_label_create(dual_bg_panels[screen_num]);
@@ -186,72 +193,58 @@ void dual_number_display_create(int screen_num,
     prev_dual_bottom_description[screen_num][0] = '\0';
 }
 
-void dual_number_display_update_top(int screen_num, float value, const char* unit, const char* description) {
+// Shared by numbers and text. half 0 = top (centred on y 120), 1 = bottom (y 360)
+static void dual_apply(int screen_num, int half, const char* text, bool is_text,
+                       const char* unit, const char* description) {
     if (screen_num < 0 || screen_num >= NUM_SCREENS) return;
-    if (!dual_top_labels[screen_num]) return;
-    
-    // Format value text
-    char text[64];
-    snprintf(text, sizeof(text), "%.1f", value);
-    
-    // Only update if changed
-    bool needs_update = false;
-    if (strcmp(text, prev_dual_top_text[screen_num]) != 0) {
-        lv_label_set_text(dual_top_labels[screen_num], text);
-        {
-            const lv_font_t* _f = lv_obj_get_style_text_font(dual_top_labels[screen_num], 0);
-            lv_obj_align(dual_top_labels[screen_num], LV_ALIGN_TOP_MID, 0,
-                120 - (int16_t)(_f->line_height / 2));
-        }
-        strncpy(prev_dual_top_text[screen_num], text, sizeof(prev_dual_top_text[screen_num]) - 1);
-        needs_update = true;
+    lv_obj_t* val_lbl  = half == 0 ? dual_top_labels[screen_num] : dual_bottom_labels[screen_num];
+    lv_obj_t* unit_lbl = half == 0 ? dual_top_unit_labels[screen_num] : dual_bottom_unit_labels[screen_num];
+    lv_obj_t* desc_lbl = half == 0 ? dual_top_description_labels[screen_num] : dual_bottom_description_labels[screen_num];
+    char* prev_text = half == 0 ? prev_dual_top_text[screen_num] : prev_dual_bottom_text[screen_num];
+    char* prev_unit = half == 0 ? prev_dual_top_unit[screen_num] : prev_dual_bottom_unit[screen_num];
+    char* prev_desc = half == 0 ? prev_dual_top_description[screen_num] : prev_dual_bottom_description[screen_num];
+    if (!val_lbl) return;
+    if (!unit) unit = "";
+    if (!description) description = "";
+
+    if (strcmp(text, prev_text) != 0) {
+        const lv_font_t* cfg = dual_cfg_font[screen_num][half] ? dual_cfg_font[screen_num][half] : &inter_48;
+        const lv_font_t* f = set_value_label(val_lbl, text, is_text, cfg, 460);
+        lv_obj_align(val_lbl, LV_ALIGN_TOP_MID, 0, (half == 0 ? 120 : 360) - (int16_t)(f->line_height / 2));
+        strncpy(prev_text, text, 63); prev_text[63] = '\0';
     }
-    
-    if (strcmp(unit, prev_dual_top_unit[screen_num]) != 0) {
-        lv_label_set_text(dual_top_unit_labels[screen_num], unit);
-        strncpy(prev_dual_top_unit[screen_num], unit, sizeof(prev_dual_top_unit[screen_num]) - 1);
-        needs_update = true;
+    if (strcmp(unit, prev_unit) != 0) {
+        lv_label_set_text(unit_lbl, unit);
+        strncpy(prev_unit, unit, 31); prev_unit[31] = '\0';
     }
-    
-    if (strcmp(description, prev_dual_top_description[screen_num]) != 0) {
-        lv_label_set_text(dual_top_description_labels[screen_num], description);
-        strncpy(prev_dual_top_description[screen_num], description, sizeof(prev_dual_top_description[screen_num]) - 1);
-        needs_update = true;
+    if (strcmp(description, prev_desc) != 0) {
+        lv_label_set_text(desc_lbl, description);
+        strncpy(prev_desc, description, 127); prev_desc[127] = '\0';
     }
 }
 
-void dual_number_display_update_bottom(int screen_num, float value, const char* unit, const char* description) {
-    if (screen_num < 0 || screen_num >= NUM_SCREENS) return;
-    if (!dual_bottom_labels[screen_num]) return;
-    
-    // Format value text
+static void dual_update_number(int screen_num, int half, float value, const char* unit, const char* description) {
     char text[64];
-    snprintf(text, sizeof(text), "%.1f", value);
-    
-    // Only update if changed
-    bool needs_update = false;
-    if (strcmp(text, prev_dual_bottom_text[screen_num]) != 0) {
-        lv_label_set_text(dual_bottom_labels[screen_num], text);
-        {
-            const lv_font_t* _f = lv_obj_get_style_text_font(dual_bottom_labels[screen_num], 0);
-            lv_obj_align(dual_bottom_labels[screen_num], LV_ALIGN_TOP_MID, 0,
-                360 - (int16_t)(_f->line_height / 2));
-        }
-        strncpy(prev_dual_bottom_text[screen_num], text, sizeof(prev_dual_bottom_text[screen_num]) - 1);
-        needs_update = true;
-    }
-    
-    if (strcmp(unit, prev_dual_bottom_unit[screen_num]) != 0) {
-        lv_label_set_text(dual_bottom_unit_labels[screen_num], unit);
-        strncpy(prev_dual_bottom_unit[screen_num], unit, sizeof(prev_dual_bottom_unit[screen_num]) - 1);
-        needs_update = true;
-    }
-    
-    if (strcmp(description, prev_dual_bottom_description[screen_num]) != 0) {
-        lv_label_set_text(dual_bottom_description_labels[screen_num], description);
-        strncpy(prev_dual_bottom_description[screen_num], description, sizeof(prev_dual_bottom_description[screen_num]) - 1);
-        needs_update = true;
-    }
+    if (isnan(value)) strcpy(text, "--");     // no data
+    else              snprintf(text, sizeof(text), "%.1f", value);
+    dual_apply(screen_num, half, text, false, unit, description);
+}
+
+void dual_number_display_update_top(int screen_num, float value, const char* unit, const char* description) {
+    dual_update_number(screen_num, 0, value, unit, description);
+}
+
+void dual_number_display_update_bottom(int screen_num, float value, const char* unit, const char* description) {
+    dual_update_number(screen_num, 1, value, unit, description);
+}
+
+// Text values (e.g. "motoring"): shown as-is, in a smaller font if needed to fit
+void dual_number_display_update_top_text(int screen_num, const char* text, const char* unit, const char* description) {
+    dual_apply(screen_num, 0, text ? text : "--", true, unit, description);
+}
+
+void dual_number_display_update_bottom_text(int screen_num, const char* text, const char* unit, const char* description) {
+    dual_apply(screen_num, 1, text ? text : "--", true, unit, description);
 }
 
 void dual_number_display_destroy(int screen_num) {

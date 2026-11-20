@@ -14,6 +14,7 @@ extern "C" {
 // description: Optional description shown in top left corner
 void number_display_create(int screen_num);
 void number_display_update(int screen_num, float value, const char* unit, const char* description);
+void number_display_update_text(int screen_num, const char* text, const char* unit, const char* description);
 void number_display_destroy(int screen_num);
 
 #ifdef __cplusplus

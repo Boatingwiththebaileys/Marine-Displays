@@ -196,7 +196,16 @@ bool apply_screen_visuals_for_one(int s) {
     Serial.flush();
     bool any = false;
     // Leaving the wind screen: remove it (other types don't know about it)
-    if (screen_configs[s].display_type != DISPLAY_TYPE_WIND) wind_display_destroy(s);
+    // Leaving a special screen type: remove it here, so every type change clears
+    // the old screen (the per-type branches below only clear some of them).
+    {
+        const int t = screen_configs[s].display_type;
+        if (t != DISPLAY_TYPE_WIND)     wind_display_destroy(s);
+        if (t != DISPLAY_TYPE_COMPASS)  { compass_display_destroy(s);  mark_compass_display_destroyed(s + 1); }
+        if (t != DISPLAY_TYPE_POSITION) { position_display_destroy(s); mark_position_display_destroyed(s + 1); }
+        if (t != DISPLAY_TYPE_AIS)      ais_display_destroy(s);
+        if (t != DISPLAY_TYPE_ANCHOR)   anchor_display_destroy(s);
+    }
     {
         bool a = apply_background_for_screen(s);
         bool b = false;

@@ -86,7 +86,7 @@ const char* n2k_field_label(N2kField f) {
         case N2K_LONGITUDE:           return "Longitude [129025]";
         case N2K_COG:                 return "COG [129026]";
         case N2K_SOG:                 return "SOG [129026]";
-        case N2K_GNSS_DATETIME:       return "GNSS Date/Time [129029]";
+        case N2K_GNSS_DATETIME:       return "Time (UTC) [126992/129029]";
         case N2K_GNSS_ALTITUDE:       return "GNSS Altitude [129029]";
         case N2K_GNSS_SATELLITES:     return "GNSS Satellites [129029]";
         case N2K_GNSS_HDOP:           return "GNSS HDOP [129029]";
@@ -147,7 +147,7 @@ const char* n2k_field_label(N2kField f) {
         case N2K_DC_SOURCE_VOLTAGE:   return "DC Source Voltage [127751]";
         case N2K_DC_SOURCE_CURRENT:   return "DC Source Current [127751]";
         // Time
-        case N2K_SYSTEM_TIME:         return "System Time [126992]";
+        case N2K_SYSTEM_TIME:         return "Date (UTC) [126992/129029]";
         default:                      return "None";
     }
 }

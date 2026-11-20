@@ -1,3 +1,4 @@
+#include "nmea2000_config.h"
 #include "signalk_config.h"
 #include "network_setup.h"
 #include "screen_config_c_api.h"
@@ -164,6 +165,44 @@ void set_sensor_metadata(int index, const char* unit, const char* description) {
 }
 
 // Get sensor value by path (for number and dual displays that may use non-gauge paths)
+// ── Text values ─────────────────────────────────────────────────────────────
+// Time / date from the display's clock (set from the network, UTC).
+// want_time: "14:32", else "20 Nov 2026". Returns "--" until the clock is set.
+static void clock_text(bool want_time, String& text, String& desc) {
+    static const char* const MON[12] = {"Jan","Feb","Mar","Apr","May","Jun",
+                                        "Jul","Aug","Sep","Oct","Nov","Dec"};
+    int yr, mo, dy, hr, mn, sc;
+    if (g_nav_datetime[0] == '\0' ||
+        sscanf(g_nav_datetime, "%d-%d-%dT%d:%d:%d", &yr, &mo, &dy, &hr, &mn, &sc) != 6 ||
+        mo < 1 || mo > 12) {
+        text = "--";
+        desc = want_time ? "Time (UTC)" : "Date (UTC)";
+        return;
+    }
+    char b[24];
+    if (want_time) {
+        snprintf(b, sizeof(b), "%02d:%02d", hr, mn);
+        text = b;
+        snprintf(b, sizeof(b), "UTC  %d %s %d", dy, MON[mo - 1], yr);
+        desc = b;
+    } else {
+        snprintf(b, sizeof(b), "%d %s %d", dy, MON[mo - 1], yr);
+        text = b;
+        desc = "Date (UTC)";
+    }
+}
+
+// True if this field is shown as text: the Time and Date fields, from the
+// display's clock (set from PGN 126992 / 129029). desc: description to use.
+bool get_sensor_text_by_path(const String& path, String& text, String& desc) {
+    desc = "";
+    if (path.length() == 0) return false;
+    N2kField f = n2k_field_from_stored(path);
+    if (f == N2K_GNSS_DATETIME) { clock_text(true,  text, desc); return true; }
+    if (f == N2K_SYSTEM_TIME)   { clock_text(false, text, desc); return true; }
+    return false;
+}
+
 float get_sensor_value_by_path(const String& path) {
     if (path.length() == 0) return NAN;
     

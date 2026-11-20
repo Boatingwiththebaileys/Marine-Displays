@@ -83,6 +83,7 @@ char g_sk_datetime[32]         = {0};  // SK writes here; RTC sync reads it
 static PsramMap<String, float> extended_sensor_values;
 static PsramMap<String, String> extended_sensor_units;
 static PsramMap<String, String> extended_sensor_descriptions;
+static PsramMap<String, String> extended_sensor_text;   // text values, e.g. navigation.state
 // When each path last arrived (millis), for screens that show "--" on old data
 static PsramMap<String, uint32_t> sensor_rx_times;
 
@@ -248,6 +249,49 @@ void set_sensor_metadata(int index, const char* unit, const char* description) {
 }
 
 // Get sensor value by path (for number and dual displays that may use non-gauge paths)
+// ── Text values ─────────────────────────────────────────────────────────────
+// Time / date from the display's clock (set from the network, UTC).
+// want_time: "14:32", else "20 Nov 2026". Returns "--" until the clock is set.
+static void clock_text(bool want_time, String& text, String& desc) {
+    static const char* const MON[12] = {"Jan","Feb","Mar","Apr","May","Jun",
+                                        "Jul","Aug","Sep","Oct","Nov","Dec"};
+    int yr, mo, dy, hr, mn, sc;
+    if (g_nav_datetime[0] == '\0' ||
+        sscanf(g_nav_datetime, "%d-%d-%dT%d:%d:%d", &yr, &mo, &dy, &hr, &mn, &sc) != 6 ||
+        mo < 1 || mo > 12) {
+        text = "--";
+        desc = want_time ? "Time (UTC)" : "Date (UTC)";
+        return;
+    }
+    char b[24];
+    if (want_time) {
+        snprintf(b, sizeof(b), "%02d:%02d", hr, mn);
+        text = b;
+        snprintf(b, sizeof(b), "UTC  %d %s %d", dy, MON[mo - 1], yr);
+        desc = b;
+    } else {
+        snprintf(b, sizeof(b), "%d %s %d", dy, MON[mo - 1], yr);
+        text = b;
+        desc = "Date (UTC)";
+    }
+}
+
+// True if this path's value is text rather than a number (e.g. navigation.state
+// "motoring", steering.autopilot.state "auto"). desc: description to use
+// instead of the server's, or "" to keep it.
+bool get_sensor_text_by_path(const String& path, String& text, String& desc) {
+    desc = "";
+    if (path.length() == 0) return false;
+    if (path == "navigation.datetime") { clock_text(true, text, desc); return true; }
+    bool found = false;
+    if (sensor_mutex != NULL && xSemaphoreTake(sensor_mutex, pdMS_TO_TICKS(50))) {
+        auto it = extended_sensor_text.find(path);
+        if (it != extended_sensor_text.end()) { text = it->second; found = true; }
+        xSemaphoreGive(sensor_mutex);
+    }
+    return found;
+}
+
 float get_sensor_value_by_path(const String& path) {
     if (path.length() == 0) return NAN;
     
@@ -516,6 +560,17 @@ static void wsEvent(WStype_t type, uint8_t * payload, size_t length) {
                             }
                             note_rx_time(sub);
                         }
+                        continue;
+                    }
+
+                    // Text values (e.g. navigation.state "motoring") are kept as text
+                    if (val["value"].is<const char*>()) {
+                        const char* sv = val["value"].as<const char*>();
+                        if (sensor_mutex != NULL && xSemaphoreTake(sensor_mutex, pdMS_TO_TICKS(50))) {
+                            extended_sensor_text[String(path)] = String(sv ? sv : "");
+                            xSemaphoreGive(sensor_mutex);
+                        }
+                        note_rx_time(String(path));
                         continue;
                     }
 
