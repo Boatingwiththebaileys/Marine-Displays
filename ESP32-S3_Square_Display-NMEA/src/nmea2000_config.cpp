@@ -486,6 +486,9 @@ static void handle_fluid_level(const tN2kMsg& msg) {           // PGN 127505
     double level, capacity;
     if (ParseN2kFluidLevel(msg, instance, type, level, capacity)) {
         if (!N2kIsNA(level)) {
+            // The library gives level in percent (0-100); these fields are a
+            // ratio (0-1, like Signal K) and are shown as % by unit conversion.
+            level /= 100.0;
             switch (type) {
                 case N2kft_Fuel:       route_value(N2K_FUEL_LEVEL, (float)level); break;
                 case N2kft_Water:      route_value(N2K_FRESHWATER_LEVEL, (float)level); break;
@@ -497,6 +500,9 @@ static void handle_fluid_level(const tN2kMsg& msg) {           // PGN 127505
             }
         }
         if (!N2kIsNA(capacity)) {
+            // The library gives capacity in litres; these fields are m3
+            // (like Signal K) and unit conversion turns them back into L / gal.
+            capacity /= 1000.0;
             if (type == N2kft_Fuel) route_value(N2K_FUEL_CAPACITY, (float)capacity);
             if (type == N2kft_Water) route_value(N2K_FRESHWATER_CAPACITY, (float)capacity);
         }
