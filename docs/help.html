@@ -148,7 +148,9 @@
       <li><b>Swipe down</b> to open the Settings panel: IP address, WiFi signal, buzzer, auto-scroll and (on the Square) screen sleep and brightness.</li>
       <li><b>Swipe up</b> to close the Settings panel.</li>
       <li><b>Tap 5 times quickly</b> (within about 1.5 seconds) on any screen to go straight back to full brightness, with night mode off. Handy if the display has been dimmed too far to read. Taps on the Settings panel don't count.</li>
+      <li><b>4" Square V4 on battery:</b> hold the power button for 3 seconds, then let go, to switch off.</li>
     </ul>
+    <p>The firmware also works on the <b>non-touch</b> versions of these boards (for example the Waveshare ESP32-S3-LCD-4). Choose screens from the web page or use <b>Auto-scroll</b>, as on the RLCD.</p>
     <h3>4.2" RLCD</h3>
     <p>The RLCD has no touchscreen. Choose which screen it shows from the <b>Screens</b> buttons on its web page, or turn on <b>Auto-scroll</b> to cycle through them.</p>
     <div class="tip"><b>Tip</b>Auto-scroll (5–60 seconds) turns a single display into a rotating dashboard, which is handy where nobody can reach the screen.</div>
@@ -158,6 +160,7 @@
     <a class="top" href="#">↑ Top</a>
     <h2>6. The display's web page</h2>
     <p>Everything is set up from the display's own web page. The home page shows its status and the screen selector, with links to the pages below. Not every model has every page.</p>
+    <p>While you're editing a screen's settings, your display switches to that screen so you can see the changes.</p>
     <div class="table-wrap"><table>
       <tr><th>Page</th><th>What it's for</th></tr>
       <tr><td><b>Gauges / Screen Config</b></td><td>What each of the 5 screens shows: display type, data, colours, icons, alarm zones.</td></tr>
@@ -165,7 +168,7 @@
       <tr><td><b>Assets</b></td><td>Upload, download and delete icon images on the SD card.</td></tr>
       <tr><td><b>Network Setup</b></td><td>WiFi, Signal K server, hostname, <b>WiFi wait</b> (how long to look for your WiFi at start-up before switching to the setup hotspot: default 15 seconds, up to 300; the screen is frozen while it looks), and on the NMEA display the data source.</td></tr>
       <tr><td><b>Device Settings</b></td><td>Brightness, buzzer, auto-scroll, screen sleep and units.</td></tr>
-      <tr><td><b>Firmware Update</b></td><td>Not for installer files. See <a href="#update">Updating</a>.</td></tr>
+      <tr><td><b>Firmware Update</b></td><td><b>Check for updates</b> and install them over WiFi, or upload an update file. See <a href="#update">Updating</a>.</td></tr>
     </table></div>
   </section>
 
@@ -176,9 +179,10 @@
     <div class="table-wrap"><table>
       <tr><th>Display type</th><th>What it shows</th><th>Square</th><th>Round</th><th>RLCD</th></tr>
       <tr><td>Gauge</td><td>One or two needle gauges over a background, with icons that change colour on alarm</td><td>✓</td><td>✓</td><td>✓</td></tr>
-      <tr><td>Gauge + Number</td><td>Gauge with a large number in the middle (wind-instrument style)</td><td>✓</td><td>✓</td><td></td></tr>
-      <tr><td>Number</td><td>One big value with low/high alarms</td><td>✓</td><td></td><td>✓</td></tr>
-      <tr><td>Dual / Quad</td><td>Two or four values on one screen</td><td>✓</td><td></td><td>✓</td></tr>
+      <tr><td>Gauge + Value</td><td>Gauge with a large value in the middle (wind-instrument style)</td><td>✓</td><td>✓</td><td></td></tr>
+      <tr><td>Single Value</td><td>One big value with low/high alarms</td><td>✓</td><td></td><td>✓</td></tr>
+      <tr><td>Dual Value / Quad Value</td><td>Two or four values on one screen</td><td>✓</td><td></td><td>✓</td></tr>
+      <tr><td>Wind</td><td>Apparent and true wind on one dial (see <a href="#wind">Wind screen</a>)</td><td>✓</td><td></td><td></td></tr>
       <tr><td>Graph</td><td>Line or bar chart over 1–30 minutes, with an optional second value</td><td>✓</td><td></td><td>✓</td></tr>
       <tr><td>Compass</td><td>Heading, with extra data fields</td><td>✓</td><td></td><td>✓</td></tr>
       <tr><td>Position</td><td>Latitude/longitude and time</td><td>✓</td><td></td><td>✓</td></tr>
@@ -186,8 +190,27 @@
       <tr><td>Anchor Alarm</td><td>Anchor watch with alarm radius</td><td>✓</td><td></td><td></td></tr>
       <tr><td>Attitude</td><td>Heel and pitch (NMEA 2000 display)</td><td>✓</td><td></td><td></td></tr>
     </table></div>
-    <div class="warn"><b>Gauge and Gauge + Number need a background, so an SD card</b>These display types draw the needle over a background image (the dial face), which is loaded from the SD card. Without a card and a background in <code>/assets</code>, the screen won't show a usable gauge. See <a href="#sd">SD card, icons and backgrounds</a>; the example assets folder on GitHub has ready-made backgrounds.</div>
-    <div class="tip"><b>Tip: one job per screen</b>Put the things you glance at most (depth, speed, wind) on screen 1, and engine data together on one screen. Use Dual or Quad when you need several values at once, and a big Number display for anything you read from across the cockpit.</div>
+    <p class="small">On the Round displays Gauge + Value is called Gauge + Number, and on the RLCD the value screens are called Number, Dual and Quad.</p>
+    <h3>Single, Dual and Quad Value screens</h3>
+    <ul>
+      <li>Values are converted to the units chosen in <a href="#device">Device Settings</a>. Percentages show as whole numbers, e.g. 56 %.</li>
+      <li>They can also show <b>text</b> from Signal K, such as an engine's state ("running") or an autopilot mode. Long text drops to a smaller font so it fits, and is cut short with ".." if it still doesn't.</li>
+      <li>The time and date can be shown: on Signal K use <code>navigation.datetime</code>; on NMEA 2000 choose <b>Time (UTC)</b> or <b>Date (UTC)</b>.</li>
+      <li>Wind angles show which side the wind is on, e.g. <b>45° P</b> or <b>45° S</b>.</li>
+      <li><b>--</b> means there's no data for that value yet, or the path is wrong.</li>
+    </ul>
+    <h3 id="wind">Wind screen (4" Square)</h3>
+    <p>A full wind instrument on one screen, for both the Signal K and NMEA 2000 displays:</p>
+    <ul>
+      <li>A dial with an <b>A</b> pointer for apparent wind and a <b>T</b> pointer for true wind.</li>
+      <li>Across the top: apparent wind angle (<b>AWA</b>) on the left, apparent wind speed (<b>AWS</b>) in the middle and true wind angle (<b>TWA</b>) on the right. Angles show the side in colour: red <b>P</b> for port, green <b>S</b> for starboard.</li>
+      <li>Underneath: true wind speed (<b>TWS</b>) bottom-left and true wind direction (<b>TWD</b>, with M or T for magnetic or true) bottom-right.</li>
+      <li>If your network doesn't send true wind, your display works it out from boat speed, heading and GPS, and shows a <b>calc</b> tag next to it.</li>
+      <li>The two bottom values can show anything else instead, such as depth and speed: enter a path for <b>Bottom-Left</b> or <b>Bottom-Right</b> in the Wind settings. Leave them empty for TWS and TWD.</li>
+      <li>On Signal K it uses <code>environment.wind.angleApparent</code> and <code>environment.wind.speedApparent</code>, so no paths need entering. Missing or out-of-date data shows --.</li>
+    </ul>
+    <div class="warn"><b>Gauge and Gauge + Value need a background, so an SD card</b>These display types draw the needle over a background image (the dial face), which is loaded from the SD card. Without a card and a background in <code>/assets</code>, the screen won't show a usable gauge. See <a href="#sd">SD card, icons and backgrounds</a>; the example assets folder on GitHub has ready-made backgrounds.</div>
+    <div class="tip"><b>Tip: one job per screen</b>Put the things you glance at most (depth, speed, wind) on screen 1, and engine data together on one screen. Use Dual or Quad when you need several values at once, and a big Single Value display for anything you read from across the cockpit.</div>
     <div class="tip"><b>Tip: use the Test button</b>On gauge screens, turn on <b>Test Mode</b> and use <b>Test</b> next to each calibration point to move the needle there. It's the quickest way to line the needle up with your background.</div>
   </section>
 
@@ -226,11 +249,11 @@
         <li>Tank levels are <b>0 to 1</b>: half full = <code>0.5</code></li>
         <li>Speeds are <b>metres per second</b>: 10 knots ≈ <code>5.14</code></li>
       </ul>
-      <p style="margin:8px 0 0">On the NMEA 2000 display, RPM is plain RPM, but temperatures and pressures are still Kelvin and Pascals. Number, Dual and Quad displays convert values for you automatically.</p></div>
+      <p style="margin:8px 0 0">The NMEA 2000 display uses the same units. (Before version 1.1.1 it used plain RPM and 0–100 for tank levels, so gauges set up then need their values changing: divide RPM by 60 and tank levels by 100.) Single, Dual and Quad Value displays convert values for you automatically.</p></div>
     <h3>Zones and alerts</h3>
     <p>Each gauge has up to 4 <b>zones</b>, each a <b>Min</b>–<b>Max</b> range with a <b>Color</b>. When the value is in a zone, the gauge's icon turns that colour (tick <b>Transparent</b> to show the icon in its own colours instead). Tick <b>Buzzer</b> on a zone to sound the buzzer while the value is in it. A typical coolant gauge has a normal zone, a warm zone in amber, and an overheat zone in red with the buzzer on.</p>
     <div class="tip"><b>Tip: overlapping zones</b>If zones overlap, the <b>narrowest</b> one wins. So you can set a wide "normal" zone across the whole scale, then a narrow red zone at the top for the alarm, without worrying about exact boundaries.</div>
-    <p>Number displays have simpler <b>Low</b> and <b>High</b> alarm values.</p>
+    <p>Single Value displays have simpler <b>Low</b> and <b>High</b> alarm values.</p>
     <h3>Buzzer</h3>
     <ul>
       <li><b>Off</b>: no sound.</li>
@@ -278,7 +301,7 @@
       <li><b>Brightness</b>: turn it down at night to protect night vision.</li>
       <li><b>Screen sleep</b> (Square): always on, or off after 1–30 minutes.</li>
       <li><b>Auto-scroll</b>: off, or move to the next screen every 5–60 seconds.</li>
-      <li><b>Units</b>: how Number, Dual and Quad displays show values:</li>
+      <li><b>Units</b>: how Single, Dual and Quad Value displays show values:</li>
     </ul>
     <div class="table-wrap"><table>
       <tr><th>Units setting</th><th>Speed</th><th>Distance</th><th>Depth</th><th>Temperature</th><th>Volume</th><th>Pressure</th></tr>
@@ -298,6 +321,7 @@
     <ul>
       <li><b>Network Setup</b> shows a live count of NMEA 2000 messages received, which is a quick check that the bus is connected.</li>
       <li>The display only listens; it never sends anything onto the NMEA 2000 bus.</li>
+      <li><b>Time (UTC)</b> and <b>Date (UTC)</b> come from your GPS (PGN 126992 or 129029).</li>
     </ul>
     <h3>Data from a WiFi gateway</h3>
     <p>Instead of a cable to the NMEA 2000 bus, your display can take the same data from a WiFi gateway (Yacht Devices, Actisense or SeaSmart). Both are set on the <b>Network Setup</b> page:</p>
@@ -313,18 +337,22 @@
     <a class="top" href="#">↑ Top</a>
     <h2>13. Updating and backups</h2>
     <h3>Updating</h3>
-    <p>There are two ways to update. Both keep your WiFi, screens and settings.</p>
+    <p>There are three ways to update. All of them keep your WiFi, screens and settings.</p>
     <ul>
+      <li><b>Check for updates</b> (easiest): open the display's <b>Firmware Update</b> page. It shows the latest stable and beta versions, with an <b>Install</b> button. Your phone or computer downloads the update from the installer site and sends it to your display over WiFi, so the phone or computer needs internet access; your display doesn't. Keep the page open until it says it's finished, and your display restarts on the new version.</li>
       <li><b>Over USB with the <a href="./">installer</a></b> (works for every display): leave <b>Erase device unticked</b>.</li>
-      <li><b>Over WiFi from the display's Firmware Update page</b> (4" Square, NMEA 2000 and RLCD): download the <b>update file</b> for your display from the
-        <a href="https://github.com/Boatingwiththebaileys/Marine-Displays/releases">GitHub releases</a>. It's the one whose name starts with <code>ota-</code>, for example
-        <code>ota-marine-display-square.bin</code>. Upload it on the Firmware Update page, and the display restarts on the new version.</li>
+      <li><b>Upload a file</b> on the Firmware Update page, if your phone or computer has no internet on the boat: download the <b>update file</b> for your display from the
+        <a href="https://github.com/Boatingwiththebaileys/Marine-Displays/releases">GitHub releases</a> beforehand. It's the one whose name starts with <code>ota-</code>, for example
+        <code>ota-marine-display-square.bin</code>.</li>
     </ul>
-    <div class="warn"><b>Use the ota- file on the Firmware Update page</b>The files without <code>ota-</code> are complete images for a fresh install over USB (flashing one by hand with esptool replaces the display's saved settings; the installer doesn't). The Firmware Update page refuses them, and refuses firmware meant for a different display model, so nothing is changed if you pick the wrong file. Update files are included from the first release after v1.0.1; displays on v1.0.1 or earlier should update once with the installer.</div>
+    <div class="tip"><b>Round displays</b>The 2.8" and 2.1" Round displays have the Firmware Update page from version 1.1.1. Update them once over USB with the installer; after that they can update over WiFi too.</div>
+    <div class="tip"><b>Going back to an older version</b>Check for updates also offers older versions, with a warning. Older firmware may not understand settings saved by a newer version, so check your screens afterwards.</div>
+    <div class="warn"><b>Use the ota- file on the Firmware Update page</b>The files without <code>ota-</code> are complete images for a fresh install over USB (flashing one by hand with esptool replaces the display's saved settings; the installer doesn't). The Firmware Update page refuses them, and refuses firmware meant for a different display model, so nothing is changed if you pick the wrong file.</div>
     <h3>Backups</h3>
     <ul>
       <li>On the Square displays, screen settings are also saved to the SD card (<code>config</code> folder) and loaded from there first. Erasing the display won't lose your screens while that card is in.</li>
       <li>To start the screens completely fresh, delete the <code>config</code> folder from the card as well as installing with <b>Erase device</b> ticked.</li>
+      <li><b>Switching between the Signal K and NMEA 2000 firmware:</b> the two store screens differently, so screens saved by one don't work on the other. When you switch, install with <b>Erase device</b> ticked and delete the <code>config</code> folder from the card (or use a different card), then set up WiFi and the screens again.</li>
       <li>Keep a copy of your <code>assets</code> and <code>config</code> folders on your computer.</li>
     </ul>
   </section>
@@ -345,6 +373,8 @@
       <tr><td>Screen too dark to read</td><td>Tap the screen 5 times quickly to return to full brightness (touchscreen displays).</td></tr>
       <tr><td>Forgot the display's address</td><td>Swipe down on the screen to see the IP address, or try <code>http://<i>hostname</i>.local</code>.</td></tr>
       <tr><td>NMEA 2000 display shows "No data"</td><td>Check the NMEA 2000 connection and that the network is powered.</td></tr>
+      <tr><td>A value shows --</td><td>No data has arrived for it. Check the path (Signal K) or field (NMEA 2000), and that the data is on your network.</td></tr>
+      <tr><td>Screens show nothing, or the wrong screen type, after switching between Signal K and NMEA 2000 firmware</td><td>The screens were saved by the other firmware. Install again with <b>Erase device</b> ticked, delete the <code>config</code> folder from the card, and set up WiFi and the screens again. See <a href="#update">Backups</a>.</td></tr>
     </table></div>
     <p>Still stuck? <a href="https://github.com/Boatingwiththebaileys/Marine-Displays/issues">Open an issue on GitHub</a>, saying which display you have and what you've tried.</p>
   </section>

@@ -127,6 +127,20 @@
     <p class="small">Click <b>Connect</b>, choose the port that appears when you plug the screen in, then <b>Install</b>.
       Installing takes about a minute.
       When <b>updating</b> a screen that's already set up, leave <b>Erase device</b> unticked to keep your settings.</p>
+    <div class="whatsnew small">
+      <p style="margin:14px 0 6px"><b>What's new in 1.1.1</b> (<a href="help.html">help guide</a> has the details):</p>
+      <ul style="margin:0 0 0 18px;padding:0">
+        <li><b>Wind screen</b> (4" Square, Signal K and NMEA 2000): apparent and true wind on one dial, with AWA, AWS and TWA across the top and TWS and TWD below. True wind is worked out if your network doesn't send it, and the bottom two values can be changed to anything, e.g. depth and speed.</li>
+        <li><b>Check for updates</b> on every display's Firmware Update page: shows the latest stable and beta and installs them over WiFi. The Round displays have this page for the first time, so install 1.1.1 on them over USB once.</li>
+        <li><b>Single, Dual and Quad Value</b> screens (renamed from Number, Dual and Quad on the Square) can show text, such as engine state or the time and date. Missing data shows <b>--</b> instead of 0.0, wind angles show as 45° P / 45° S, and percentages are whole numbers.</li>
+        <li><b>Signal K:</b> fixed the display freezing and not reconnecting after the connection drops, and the settings page no longer freezes the display on slow WiFi.</li>
+        <li><b>4" Square:</b> sharper text with no coloured fringes, faster first start-up after a full erase, and the V4 on battery switches off by holding the power button for 3 seconds.</li>
+        <li><b>NMEA 2000:</b> tank levels and engine RPM now show the right values (they were 100 and 60 times too high), and there are new Time (UTC) and Date (UTC) fields.</li>
+        <li>Works on the non-touch versions of the boards, and the settings pages follow the screen you're editing.</li>
+      </ul>
+      <p style="margin:8px 0 0"><b>NMEA 2000 gauges:</b> if you set up a rev counter or tank <b>Gauge</b> on 1.1.0, change its calibration values after updating.
+        RPM is now in revolutions per second (3000 RPM = <code>50</code>, so divide by 60) and tank levels are 0 to 1 (half full = <code>0.5</code>, so divide by 100), the same as Signal K.</p>
+    </div>
   </section>
 
   <section class="panel beta" id="beta" hidden>
@@ -134,25 +148,7 @@
     <p class="small" style="margin:0 0 14px">Test versions that aren't finished yet and may have bugs. Please only install one if you're happy to
       test it and <a href="https://github.com/Boatingwiththebaileys/Marine-Displays/issues">report how it goes</a>.
       To go back, install the normal version above with <b>Erase device</b> unticked and your settings are kept.</p>
-    <p class="small" style="margin:0 0 14px"><b>What's new:</b> works on the non-touch versions of these boards (e.g. Waveshare ESP32-S3-LCD-4). Without a touch panel the screen and web page stay responsive, and the Device page says to use Auto-scroll.
-      <b>4" Square V4 on battery:</b> hold the power button for 3 seconds, then let go, to switch off.
-      <b>4" Square:</b> new built-in Wind screen (apparent and true wind, wind direction and drift; true wind and drift are worked out if your network doesn't send them).
-      Settings pages: the display follows the screen you're editing, tabs keep your changes, and Needle Styles no longer copies one needle's settings to another.
-      Auto-scroll set on the display now stays in step with the web Device page.
-      Signal K: the screen settings page no longer freezes the display or drops the Signal K connection on slow WiFi.
-      The serial log now shows the WiFi signal strength, to help track down connection problems.
-      Signal K: fixed the display freezing and Signal K not reconnecting after the connection drops.
-      Square: sharper text and logo, with no coloured pixels around the edges.
-      Wind screen: larger dial, AWA and TWA at the top with red/green side letters, TWD bottom-right by default.
-      Faster first start-up after a full erase or after using other firmware (fixes a possible restart loop).
-      Single, Dual and Quad Value screens (renamed from Number, Dual, Quad) can show text from Signal K, e.g. engine state, and missing data shows -- instead of 0.0.
-      NMEA 2000: new Time (UTC) and Date (UTC) fields. Changing a screen type now clears the old screen properly.
-      Firmware Update page: new Check for updates box. It shows the latest stable and beta, and installs them over WiFi using your phone or computer's internet (Square and RLCD).
-      Round displays: now have the Firmware Update page too. Install this version over USB once; after that, updates can be done over WiFi.
-      NMEA 2000: tank levels now show the right percentage (they showed 100 times too high, e.g. 5600%), and tank capacity is correct.
-      NMEA 2000: Engine RPM now shows the right value (it showed 60 times too high) and RPM gauges work.
-      Wind angles on Single, Dual and Quad Value screens show as 45° P / 45° S, and Gauge + Value shows -- when data is missing.
-      Percentages (tank levels, battery, humidity, engine load) show as whole numbers, e.g. 56 %.</p>
+    <p class="small" style="margin:0 0 14px"><b>What's new:</b> see the <a href="https://github.com/Boatingwiththebaileys/Marine-Displays/releases">release notes</a>.</p>
     <div class="boards">
       <div class="board" data-beta="square" hidden>
         <div class="source sk"><img src="img/signalk.svg" alt="">Signal K</div>
