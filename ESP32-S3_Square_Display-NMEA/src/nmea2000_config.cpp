@@ -431,7 +431,9 @@ static void handle_engine_rapid(const tN2kMsg& msg) {          // PGN 127488
     int8_t tilt;
     if (ParseN2kEngineParamRapid(msg, instance, rpm, boost, tilt)) {
         bool eng2 = (instance == 1);
-        if (!N2kIsNA(rpm))   route_value(eng2 ? N2K_ENGINE2_RPM : N2K_ENGINE_RPM, (float)rpm);
+        // The library gives RPM; these fields are Hz (revolutions per second,
+        // like Signal K) and unit conversion turns them back into RPM.
+        if (!N2kIsNA(rpm))   route_value(eng2 ? N2K_ENGINE2_RPM : N2K_ENGINE_RPM, (float)(rpm / 60.0));
         if (!N2kIsNA(boost)) route_value(N2K_ENGINE_BOOST, (float)boost);
         if (tilt != N2kInt8NA) route_value(N2K_ENGINE_TILT_TRIM, (float)tilt);
     }

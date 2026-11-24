@@ -1,3 +1,5 @@
+#include "value_label.h"
+#include <math.h>
 #include "gauge_number_display.h"
 #include "screen_config_c_api.h"
 #include "ui.h"
@@ -26,6 +28,7 @@ static lv_obj_t* get_screen_obj(int screen_num) {
 // Previous values for change detection
 // EXT_RAM_ATTR → PSRAM, freeing ~1.1 KB of internal RAM
 EXT_RAM_ATTR static char prev_gauge_num_center_text[NUM_SCREENS][64];
+static const lv_font_t* gauge_num_cfg_font[NUM_SCREENS] = {NULL};  // font chosen in settings
 EXT_RAM_ATTR static char prev_gauge_num_center_unit[NUM_SCREENS][32];
 EXT_RAM_ATTR static char prev_gauge_num_center_description[NUM_SCREENS][128];
 
@@ -126,6 +129,7 @@ void gauge_number_display_create(int screen_num,
     lv_label_set_long_mode(gauge_num_center_labels[screen_num], LV_LABEL_LONG_CLIP);
     lv_obj_set_style_text_align(gauge_num_center_labels[screen_num], LV_TEXT_ALIGN_RIGHT, 0);
     lv_obj_set_style_text_font(gauge_num_center_labels[screen_num], get_font_for_size(center_font_size), 0);
+    gauge_num_cfg_font[screen_num] = get_font_for_size(center_font_size);
     lv_obj_set_style_text_color(gauge_num_center_labels[screen_num], parse_hex_color(center_font_color), 0);
     lv_obj_set_style_transform_pivot_x(gauge_num_center_labels[screen_num], LV_PCT(50), 0);
     lv_obj_set_style_transform_pivot_y(gauge_num_center_labels[screen_num], LV_PCT(50), 0);
@@ -150,18 +154,18 @@ void gauge_number_display_create(int screen_num,
     prev_gauge_num_center_description[screen_num][0] = '\0';
 }
 
-void gauge_number_display_update_center(int screen_num, float value, const char* unit, const char* description) {
+// Shared by numbers and text: set the centre value, unit and description
+static void gauge_num_apply(int screen_num, const char* text, bool is_text, const char* unit, const char* description) {
     if (screen_num < 0 || screen_num >= NUM_SCREENS) return;
     if (!gauge_num_center_labels[screen_num]) return;
-    
-    // Format value text
-    char text[64];
-    snprintf(text, sizeof(text), "%.1f", value);
+    if (!unit) unit = "";
+    if (!description) description = "";
     
     // Only update if changed
     bool needs_update = false;
     if (strcmp(text, prev_gauge_num_center_text[screen_num]) != 0) {
-        lv_label_set_text(gauge_num_center_labels[screen_num], text);
+        const lv_font_t* cfg = gauge_num_cfg_font[screen_num] ? gauge_num_cfg_font[screen_num] : &inter_48;
+        set_value_label(gauge_num_center_labels[screen_num], text, is_text, cfg, 300);
         strncpy(prev_gauge_num_center_text[screen_num], text, sizeof(prev_gauge_num_center_text[screen_num]) - 1);
         needs_update = true;
     }
@@ -184,6 +188,18 @@ void gauge_number_display_update_center(int screen_num, float value, const char*
         lv_label_set_text(gauge_num_center_description_labels[screen_num], acronym.c_str());
         strncpy(prev_gauge_num_center_description[screen_num], description, sizeof(prev_gauge_num_center_description[screen_num]) - 1);
     }
+}
+
+void gauge_number_display_update_center(int screen_num, float value, const char* unit, const char* description) {
+    char text[64];
+    if (isnan(value)) strcpy(text, "--");     // no data
+    else              snprintf(text, sizeof(text), "%.1f", value);
+    gauge_num_apply(screen_num, text, false, unit, description);
+}
+
+// Text value (e.g. "motoring"): shown as-is, in a smaller font if needed to fit
+void gauge_number_display_update_center_text(int screen_num, const char* text, const char* unit, const char* description) {
+    gauge_num_apply(screen_num, text ? text : "--", true, unit, description);
 }
 
 void gauge_number_display_destroy(int screen_num) {

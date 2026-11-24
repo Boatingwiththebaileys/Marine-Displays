@@ -10,6 +10,7 @@ void gauge_number_display_create(int screen_num,
 
 // Update center number display with new value, units, and description
 void gauge_number_display_update_center(int screen_num, float value, const char* unit, const char* description);
+void gauge_number_display_update_center_text(int screen_num, const char* text, const char* unit, const char* description);
 
 // Destroy gauge+number display for a screen
 void gauge_number_display_destroy(int screen_num);

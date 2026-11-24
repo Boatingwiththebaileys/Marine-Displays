@@ -292,6 +292,18 @@ bool get_sensor_text_by_path(const String& path, String& text, String& desc) {
     return found;
 }
 
+// Wind angle off the bow as "45° P" / "45° S" ("0°" / "180°" dead ahead or
+// astern), like the Wind screen. deg: any range (0-360 or ±180).
+static void format_wind_side(float deg, String& text) {
+    float a = fmodf(deg, 360.0f);
+    if (a < 0) a += 360.0f;
+    if (a > 180.0f) a -= 360.0f;                    // -180..180, port negative
+    int v = (int)lroundf(fabsf(a));
+    char b[16];
+    if (v == 0 || v == 180) snprintf(b, sizeof(b), "%d\xc2\xb0", v);
+    else snprintf(b, sizeof(b), "%d\xc2\xb0 %s", v, a > 0 ? "S" : "P");
+    text = b;
+}
 float get_sensor_value_by_path(const String& path) {
     if (path.length() == 0) return NAN;
     
@@ -311,6 +323,17 @@ float get_sensor_value_by_path(const String& path) {
     }
     
     return NAN;
+}
+
+// Wind angles (apparent / true, off the bow) for the Single, Dual and Quad
+// Value screens. False if the path isn't one, or has no data.
+bool wind_angle_text(const String& path, String& text) {
+    if (path != "environment.wind.angleApparent" && path != "environment.wind.angleTrueWater" &&
+        path != "environment.wind.angleTrueGround") return false;
+    float rad = get_sensor_value_by_path(path);
+    if (isnan(rad)) return false;
+    format_wind_side(rad * 180.0f / (float)M_PI, text);
+    return true;
 }
 
 // Get sensor unit by path

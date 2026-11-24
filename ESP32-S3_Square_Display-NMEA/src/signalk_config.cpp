@@ -203,6 +203,18 @@ bool get_sensor_text_by_path(const String& path, String& text, String& desc) {
     return false;
 }
 
+// Wind angle off the bow as "45° P" / "45° S" ("0°" / "180°" dead ahead or
+// astern), like the Wind screen. deg: any range (0-360 or ±180).
+static void format_wind_side(float deg, String& text) {
+    float a = fmodf(deg, 360.0f);
+    if (a < 0) a += 360.0f;
+    if (a > 180.0f) a -= 360.0f;                    // -180..180, port negative
+    int v = (int)lroundf(fabsf(a));
+    char b[16];
+    if (v == 0 || v == 180) snprintf(b, sizeof(b), "%d\xc2\xb0", v);
+    else snprintf(b, sizeof(b), "%d\xc2\xb0 %s", v, a > 0 ? "S" : "P");
+    text = b;
+}
 float get_sensor_value_by_path(const String& path) {
     if (path.length() == 0) return NAN;
     
@@ -222,6 +234,17 @@ float get_sensor_value_by_path(const String& path) {
     }
     
     return NAN;
+}
+
+// Wind angles (apparent / true, off the bow) for the Single, Dual and Quad
+// Value screens. False if the field isn't one, or has no data.
+bool wind_angle_text(const String& path, String& text) {
+    N2kField f = n2k_field_from_stored(path);
+    if (f != N2K_WIND_ANGLE_APPARENT && f != N2K_WIND_ANGLE_TRUE) return false;
+    float deg = get_sensor_value_by_path(path);       // already degrees, 0-360
+    if (isnan(deg)) return false;
+    format_wind_side(deg, text);
+    return true;
 }
 
 // Thread-safe setter by path (for NMEA 2000 route_value)

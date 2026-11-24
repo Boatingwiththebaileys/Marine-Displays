@@ -235,7 +235,13 @@ static String last_display_descriptions[5] = {"", "", "", "", ""};
 // (a custom label wins). Text values have no units and no alarms.
 static bool path_text(int screen_idx, int slot, const String& path, String& text, String& desc) {
     String tdesc;
-    if (path.length() == 0 || !get_sensor_text_by_path(path, text, tdesc)) return false;
+    if (path.length() == 0) return false;
+    if (wind_angle_text(path, text)) {        // e.g. "45° P", like the Wind screen
+        desc = get_sensor_description_by_path(path);
+        { const char* cl = get_custom_label(screen_idx, slot); if (cl[0]) desc = String(cl); }
+        return true;
+    }
+    if (!get_sensor_text_by_path(path, text, tdesc)) return false;
     desc = tdesc.length() ? tdesc : get_sensor_description_by_path(path);
     { const char* cl = get_custom_label(screen_idx, slot); if (cl[0]) desc = String(cl); }
     return true;
@@ -640,7 +646,7 @@ static void update_gauge_number_display_for_screen(int screen_num) {
     // Helper lambda to get value and metadata for a path
     auto get_path_data = [](const String& path, float& value, String& unit, String& description) {
         if (path.length() == 0) {
-            value = 0.0f;
+            value = NAN;
             unit = "No Path";
             description = "";
             return false;
@@ -652,7 +658,7 @@ static void update_gauge_number_display_for_screen(int screen_num) {
         description = get_sensor_description_by_path(path);
         
         if (isnan(value)) {
-            unit = "N/A";
+            unit = "";
             description = "";
             return false;
         }
@@ -669,10 +675,16 @@ static void update_gauge_number_display_for_screen(int screen_num) {
     { const char* cl = get_custom_label(screen_idx, 0); if (cl[0]) center_description = String(cl); }
     
     // Update center number display
-    gauge_number_display_update_center(screen_idx, 
-                                         isnan(center_value) ? 0.0f : center_value, 
-                                         center_unit.c_str(), 
-                                         center_description.c_str());
+    {   // Text values (e.g. "motoring") are shown as-is; missing numbers as "--"
+        String txt, tdesc;
+        if (get_sensor_text_by_path(center_path, txt, tdesc)) {
+            tdesc = get_sensor_description_by_path(center_path);   // shown as an abbreviation here
+            { const char* cl = get_custom_label(screen_idx, 0); if (cl[0]) tdesc = String(cl); }
+            gauge_number_display_update_center_text(screen_idx, txt.c_str(), "", tdesc.c_str());
+        } else {
+            gauge_number_display_update_center(screen_idx, center_value, center_unit.c_str(), center_description.c_str());
+        }
+    }
 
     // Buzzer alarm check for Gauge+Number center display
     // min[1][1]/buzzer[1][1]=low, max[1][2]/buzzer[1][2]=high

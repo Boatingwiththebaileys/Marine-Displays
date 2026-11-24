@@ -63,6 +63,8 @@ float get_sensor_value_by_path(const String& path);
 // Text value for a path (e.g. "motoring", or the time). desc: description
 // to use instead of the usual one ("" = keep it). False if it is a number.
 bool get_sensor_text_by_path(const String& path, String& text, String& desc);
+// Wind angle as "45° P" / "45° S" for the value screens; false if not a wind angle.
+bool wind_angle_text(const String& path, String& text);
 String get_sensor_unit_by_path(const String& path);
 String get_sensor_description_by_path(const String& path);
 // Milliseconds since the path last arrived (UINT32_MAX = never), and the value
