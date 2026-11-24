@@ -1,3 +1,4 @@
+#include "psram_alloc.h"
 #include "ais_display.h"
 #include "ui.h"
 #include "screen_config_c_api.h"
@@ -40,7 +41,7 @@ typedef struct {
     bool  valid;
 } AisTarget;
 
-static AisTarget  g_ais_targets[AIS_MAX_TARGETS];
+static AisTarget* g_ais_targets = psram_array<AisTarget>(AIS_MAX_TARGETS);  // PSRAM, see psram_alloc.h
 static int        g_ais_target_count = 0;
 static SemaphoreHandle_t g_ais_mutex = NULL;
 static unsigned long g_ais_last_fetch = 0;

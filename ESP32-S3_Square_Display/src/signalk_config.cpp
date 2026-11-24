@@ -690,9 +690,11 @@ static void signalk_task(void *parameter) {
         // whether Signal K is actually connected.
         bool conn_now = ws_client.isConnected();
         if (conn_now != last_status_conn || now - last_status_log >= 60000) {
-            Serial.printf("[SK] status: %s, WiFi %d dBm, iRAM=%u\n",
+            Serial.printf("[SK] status: %s, WiFi %d dBm, iRAM=%u largest=%u min=%u\n",
                           conn_now ? "connected" : "not connected",
-                          (int)WiFi.RSSI(), heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
+                          (int)WiFi.RSSI(), heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+                          heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL),
+                          heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL));
             last_status_conn = conn_now;
             last_status_log = now;
         }

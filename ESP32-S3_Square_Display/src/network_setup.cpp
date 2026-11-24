@@ -103,8 +103,8 @@ static inline void rst_close_client() {
 
 // Expose a small helper to dump loaded screen configs for debugging
 void dump_screen_configs(void) {
-    ESP_LOGI(TAG_SETUP, "Dumping %u screen_configs", (unsigned)(sizeof(screen_configs)/sizeof(screen_configs[0])));
-    size_t total_screens = sizeof(screen_configs)/sizeof(screen_configs[0]);
+    ESP_LOGI(TAG_SETUP, "Dumping %u screen_configs", (unsigned)NUM_SCREENS);
+    size_t total_screens = NUM_SCREENS;
     for (size_t s = 0; s < total_screens; ++s) {
         ESP_LOGI(TAG_SETUP, "Screen %u: background='%s' icon_top='%s' icon_bottom='%s' show_bottom=%u", (unsigned)s,
                  screen_configs[s].background_path, screen_configs[s].icon_paths[0], screen_configs[s].icon_paths[1], (unsigned)screen_configs[s].show_bottom);

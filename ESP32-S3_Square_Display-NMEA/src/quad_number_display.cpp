@@ -1,3 +1,4 @@
+#include "psram_alloc.h"
 #include "quad_number_display.h"
 #include "screen_config_c_api.h"
 #include "unit_convert.h"
@@ -36,21 +37,21 @@ static lv_obj_t* get_screen_obj(int screen_num) {
 }
 
 // Previous values for change detection
-// EXT_RAM_ATTR → PSRAM, freeing ~4.5 KB of internal RAM
-EXT_RAM_ATTR static char prev_quad_tl_text[NUM_SCREENS][64];
+// In PSRAM (see psram_alloc.h), freeing ~4.5 KB of internal RAM
+static char (*prev_quad_tl_text)[64] = psram_array<char[64]>(NUM_SCREENS);
 // Font chosen in settings for each quadrant (TL, TR, BL, BR)
 static const lv_font_t* quad_cfg_font[NUM_SCREENS][4] = {{NULL}};
-EXT_RAM_ATTR static char prev_quad_tl_unit[NUM_SCREENS][32];
-EXT_RAM_ATTR static char prev_quad_tl_description[NUM_SCREENS][128];
-EXT_RAM_ATTR static char prev_quad_tr_text[NUM_SCREENS][64];
-EXT_RAM_ATTR static char prev_quad_tr_unit[NUM_SCREENS][32];
-EXT_RAM_ATTR static char prev_quad_tr_description[NUM_SCREENS][128];
-EXT_RAM_ATTR static char prev_quad_bl_text[NUM_SCREENS][64];
-EXT_RAM_ATTR static char prev_quad_bl_unit[NUM_SCREENS][32];
-EXT_RAM_ATTR static char prev_quad_bl_description[NUM_SCREENS][128];
-EXT_RAM_ATTR static char prev_quad_br_text[NUM_SCREENS][64];
-EXT_RAM_ATTR static char prev_quad_br_unit[NUM_SCREENS][32];
-EXT_RAM_ATTR static char prev_quad_br_description[NUM_SCREENS][128];
+static char (*prev_quad_tl_unit)[32] = psram_array<char[32]>(NUM_SCREENS);
+static char (*prev_quad_tl_description)[128] = psram_array<char[128]>(NUM_SCREENS);
+static char (*prev_quad_tr_text)[64] = psram_array<char[64]>(NUM_SCREENS);
+static char (*prev_quad_tr_unit)[32] = psram_array<char[32]>(NUM_SCREENS);
+static char (*prev_quad_tr_description)[128] = psram_array<char[128]>(NUM_SCREENS);
+static char (*prev_quad_bl_text)[64] = psram_array<char[64]>(NUM_SCREENS);
+static char (*prev_quad_bl_unit)[32] = psram_array<char[32]>(NUM_SCREENS);
+static char (*prev_quad_bl_description)[128] = psram_array<char[128]>(NUM_SCREENS);
+static char (*prev_quad_br_text)[64] = psram_array<char[64]>(NUM_SCREENS);
+static char (*prev_quad_br_unit)[32] = psram_array<char[32]>(NUM_SCREENS);
+static char (*prev_quad_br_description)[128] = psram_array<char[128]>(NUM_SCREENS);
 
 // Font size to zoom mapping - all native fonts, no scaling (LVGL uses 256 as 100% scale)
 static int font_size_to_zoom(uint8_t font_size) {

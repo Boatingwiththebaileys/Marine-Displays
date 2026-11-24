@@ -282,7 +282,7 @@ void _ui_switch_theme(int val)
 void _ui_apply_icon_style(lv_obj_t *img, int screen, int gauge)
 {
    if (!img) return;
-   size_t total_screens = sizeof(screen_configs) / sizeof(screen_configs[0]);
+   size_t total_screens = NUM_SCREENS;
    if (screen < 0 || (size_t)screen >= total_screens) return;
    if (gauge < 0 || gauge > 1) return;
 

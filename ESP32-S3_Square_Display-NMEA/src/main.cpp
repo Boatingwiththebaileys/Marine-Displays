@@ -1,3 +1,4 @@
+#include "psram_alloc.h"
 #include <Preferences.h>
 #include "tap_reset.h"
 #include "power_key.h"
@@ -1130,6 +1131,11 @@ void setup() {
     ets_printf("*** Serial.begin done ***\r\n");
     Serial.println("\n\n=== ESP32 Square Display Starting ===");
     Serial.printf("Firmware version: %s\n", FW_VERSION);
+    // Where the big tables went (should be PSRAM) and internal RAM at start-up
+    psram_report("screen_configs", screen_configs, NUM_SCREENS * sizeof(ScreenConfig));
+    Serial.printf("[MEM] boot: iRAM free=%u largest=%u\n",
+                  heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+                  heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
     Serial.flush();
     
     // I2C and IO expander already initialized above; re-assert safe state after delay
@@ -1327,6 +1333,16 @@ void setup() {
 void loop() {
     config_server.handleClient();
     poll_wifi_scan();   // collect background WiFi scan results without blocking
+
+    // Internal RAM once a minute, so logs show how close to the limit it runs
+    static unsigned long last_mem_log = 0;
+    if (millis() - last_mem_log >= 60000) {
+        last_mem_log = millis();
+        Serial.printf("[MEM] iRAM=%u largest=%u min=%u\n",
+                      heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+                      heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL),
+                      heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL));
+    }
 
     // --- Screen-off timeout ---------------------------------------------------
     // g_last_activity_ms is updated on every touch in Lvgl_Touchpad_Read().

@@ -114,8 +114,8 @@ typedef struct {
 	// Add more fields as needed
 } __attribute__((packed)) ScreenConfig;
 
-// Expose the screen_configs array to C files
-extern ScreenConfig screen_configs[NUM_SCREENS];
+// Expose the screen_configs array (NUM_SCREENS entries, in PSRAM) to C files
+extern ScreenConfig* screen_configs;
 
 #ifdef __cplusplus
 }

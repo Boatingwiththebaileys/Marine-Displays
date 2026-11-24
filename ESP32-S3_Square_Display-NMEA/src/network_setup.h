@@ -8,7 +8,7 @@
 #include "signalk_config.h"  // For NUM_SCREENS, TOTAL_PARAMS
 
 #include "calibration_types.h"
-extern GaugeCalibrationPoint gauge_cal[NUM_SCREENS][2][5];
+extern GaugeCalibrationPoint (*gauge_cal)[2][5];   // [NUM_SCREENS][2][5], in PSRAM
 
 // Global synchronous web server instance (WebServer — handleClient() called
 // from loop() on Core 1; HTTP handlers also run on Core 1).

@@ -1,3 +1,4 @@
+#include "psram_alloc.h"
 #include "number_display.h"
 #include "ui.h"
 #include "screen_config_c_api.h"
@@ -14,10 +15,10 @@ static lv_obj_t* bg_panels[NUM_SCREENS] = {NULL, NULL, NULL, NULL, NULL};
 
 // Previous values for change detection to avoid unnecessary redraws
 // EXT_RAM_ATTR → PSRAM, freeing ~960 bytes of internal RAM
-EXT_RAM_ATTR static char prev_number_text[NUM_SCREENS][64];
+static char (*prev_number_text)[64] = psram_array<char[64]>(NUM_SCREENS);
 static const lv_font_t* number_cfg_font[NUM_SCREENS] = {NULL};  // font chosen in settings
-EXT_RAM_ATTR static char prev_unit_text[NUM_SCREENS][32];
-EXT_RAM_ATTR static char prev_description_text[NUM_SCREENS][128];
+static char (*prev_unit_text)[32] = psram_array<char[32]>(NUM_SCREENS);
+static char (*prev_description_text)[128] = psram_array<char[128]>(NUM_SCREENS);
 
 // Helper to convert hex color string to lv_color_t
 static lv_color_t hex_to_lv_color(const char* hex) {

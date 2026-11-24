@@ -4,6 +4,7 @@
   | help        : 
     The provided LVGL library file must be installed first
 ******************************************************************************/
+#include <soc/soc_memory_layout.h>
 #include "LVGL_Driver.h"
 #include "esp_timer.h"
 #include "SD_Card.h"
@@ -303,28 +304,18 @@ void Lvgl_Init(void)
   size_t lv_buf_px = (ESP_PANEL_LCD_WIDTH * ESP_PANEL_LCD_HEIGHT / 5);
   size_t lv_buf_bytes = lv_buf_px * sizeof(lv_color_t);
   const size_t lv_buf_align = 64;
-  buf1 = (lv_color_t*) heap_caps_aligned_alloc(lv_buf_align, lv_buf_bytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_DMA);
-  buf2 = (lv_color_t*) heap_caps_aligned_alloc(lv_buf_align, lv_buf_bytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_DMA);
-  lv_disp_draw_buf_init( &draw_buf, buf1, buf2, lv_buf_px);
-  ESP_LOGI(TAG_LVGL, "LVGL buffers (PSRAM+DMA, align=%d): buf1=%p buf2=%p size=%u", lv_buf_align, buf1, buf2, (unsigned)lv_buf_bytes);
-  if (!buf1 || !buf2) {
-    ESP_LOGW(TAG_LVGL, "Initial LVGL DMA buffer allocation failed (buf1=%p buf2=%p). Trying internal DMA fallback.", buf1, buf2);
-    if (!buf1) buf1 = (lv_color_t*) heap_caps_aligned_alloc(lv_buf_align, lv_buf_bytes, MALLOC_CAP_DMA);
-    if (!buf2) buf2 = (lv_color_t*) heap_caps_aligned_alloc(lv_buf_align, lv_buf_bytes, MALLOC_CAP_DMA);
-    // Re-init draw buffer with any newly allocated pointers
-    lv_disp_draw_buf_init(&draw_buf, buf1, buf2, lv_buf_px);
-    ESP_LOGI(TAG_LVGL, "LVGL buffers after DMA fallback: buf1=%p buf2=%p", buf1, buf2);
-    if (!buf1 || !buf2) {
-      ESP_LOGW(TAG_LVGL, "Internal DMA fallback failed, falling back to non-DMA internal allocation (may show color corruption).", buf1, buf2);
-      if (!buf1) buf1 = (lv_color_t*) heap_caps_malloc(lv_buf_bytes, MALLOC_CAP_INTERNAL);
-      if (!buf2) buf2 = (lv_color_t*) heap_caps_malloc(lv_buf_bytes, MALLOC_CAP_INTERNAL);
-      lv_disp_draw_buf_init(&draw_buf, buf1, buf2, lv_buf_px);
-      ESP_LOGI(TAG_LVGL, "LVGL buffers after final fallback: buf1=%p buf2=%p", buf1, buf2);
-      if (!buf1 || !buf2) {
-        ESP_LOGE(TAG_LVGL, "LVGL buffer allocation failed after all fallbacks (buf1=%p buf2=%p). Display likely won't render.", buf1, buf2);
-      }
-    }
-  }
+  // One draw buffer, in internal RAM (fastest to draw into). A second buffer
+  // only helps when the flush runs in the background, but here the flush is a
+  // plain copy into the panel's frame buffer that finishes before LVGL draws
+  // on, so a second one was never used and just cost ~90 KB of internal RAM.
+  // (PSRAM+DMA, as this used to ask for first, isn't available on this
+  // framework, so that request always fell back to internal RAM anyway.)
+  buf1 = (lv_color_t*) heap_caps_aligned_alloc(lv_buf_align, lv_buf_bytes, MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA);
+  if (!buf1) buf1 = (lv_color_t*) heap_caps_aligned_alloc(lv_buf_align, lv_buf_bytes, MALLOC_CAP_SPIRAM);
+  buf2 = NULL;
+  lv_disp_draw_buf_init(&draw_buf, buf1, NULL, lv_buf_px);
+  Serial.printf("[LVGL] draw buffer %u bytes in %s\n", (unsigned)lv_buf_bytes,
+                !buf1 ? "NOWHERE (allocation failed)" : esp_ptr_external_ram(buf1) ? "PSRAM" : "internal RAM");
 
   /*Initialize the display*/
   lv_disp_drv_init( &disp_drv );

@@ -1,3 +1,4 @@
+#include "psram_alloc.h"
 #include "value_label.h"
 #include <math.h>
 #include "gauge_number_display.h"
@@ -27,11 +28,11 @@ static lv_obj_t* get_screen_obj(int screen_num) {
 }
 
 // Previous values for change detection
-// EXT_RAM_ATTR → PSRAM, freeing ~1.1 KB of internal RAM
-EXT_RAM_ATTR static char prev_gauge_num_center_text[NUM_SCREENS][64];
+// In PSRAM (see psram_alloc.h), freeing ~1.1 KB of internal RAM
+static char (*prev_gauge_num_center_text)[64] = psram_array<char[64]>(NUM_SCREENS);
 static const lv_font_t* gauge_num_cfg_font[NUM_SCREENS] = {NULL};  // font chosen in settings
-EXT_RAM_ATTR static char prev_gauge_num_center_unit[NUM_SCREENS][32];
-EXT_RAM_ATTR static char prev_gauge_num_center_description[NUM_SCREENS][128];
+static char (*prev_gauge_num_center_unit)[32] = psram_array<char[32]>(NUM_SCREENS);
+static char (*prev_gauge_num_center_description)[128] = psram_array<char[128]>(NUM_SCREENS);
 
 // Font size to LVGL font mapping
 static const lv_font_t* get_font_for_size(uint8_t size) {

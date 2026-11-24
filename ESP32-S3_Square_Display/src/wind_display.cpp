@@ -12,6 +12,7 @@
 // values worked out on the display get an amber "calc" tag. Anything missing
 // or out of date shows "--". Shared by the Signal K and NMEA 2000 firmware.
 
+#include "psram_alloc.h"
 #include "wind_display.h"
 #include "ui.h"
 #include "screen_config_c_api.h"
@@ -66,16 +67,21 @@ typedef struct {
     lv_obj_t* twa_val;  lv_obj_t* twa_side; lv_obj_t* twa_calc;
     lv_obj_t* drift_val;
     lv_obj_t* f_desc[2]; lv_obj_t* f_calc[2]; lv_obj_t* f_val[2]; lv_obj_t* f_unit[2];
-    // Last drawn dynamic state (NAN = hidden)
+    // Pointers / drift arrow: as last drawn (NAN = hidden), gliding position,
+    // and the latest reading they glide towards
     float awa, twa, drift_rel;
+    float awa_cur, twa_cur, drift_cur;
+    float awa_tgt, twa_tgt, drift_tgt;
+    lv_timer_t* glide;
+    uint32_t glide_last;
     // Latest computed values, used by the default bottom fields
     float tws_ms; int true_calc;
     float twd_deg; int twd_mag, twd_calc;
 } WindScreen;
 
-static WindScreen w[NUM_SCREENS];
-static EXT_RAM_ATTR lv_point_t w_tick_pts[NUM_SCREENS][N_TICKS][2];
-static EXT_RAM_ATTR lv_point_t w_hull_pts[NUM_SCREENS][N_HULL];
+static WindScreen* w = psram_array<WindScreen>(NUM_SCREENS);
+static lv_point_t (*w_tick_pts)[N_TICKS][2] = psram_array<lv_point_t[N_TICKS][2]>(NUM_SCREENS);
+static lv_point_t (*w_hull_pts)[N_HULL] = psram_array<lv_point_t[N_HULL]>(NUM_SCREENS);
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 static lv_obj_t* screen_obj(int n) {
@@ -230,22 +236,109 @@ static void draw_drift_arrow(lv_draw_ctx_t* ctx, float rel) {
     lv_draw_triangle(ctx, &rd, head);
 }
 
+// Pointers within a few degrees: put the badges side by side
+static void badge_sides(float twa, float awa, float* t_side, float* a_side) {
+    *t_side = *a_side = 0;
+    if (ok(twa) && ok(awa)) {
+        float d = norm180(twa - awa);
+        if (fabsf(d) < 8.0f) {
+            *t_side = (d >= 0) ? (BADGE_R + 2) : -(BADGE_R + 2);
+            *a_side = -*t_side;
+        }
+    }
+}
+
 static void dyn_draw_cb(lv_event_t* e) {
     int n = (int)(intptr_t)lv_event_get_user_data(e);
     if (n < 0 || n >= NUM_SCREENS) return;
     lv_draw_ctx_t* ctx = lv_event_get_draw_ctx(e);
     if (ok(w[n].drift_rel)) draw_drift_arrow(ctx, w[n].drift_rel);
-    // Pointers within a few degrees: put the badges side by side
-    float t_side = 0, a_side = 0;
-    if (ok(w[n].twa) && ok(w[n].awa)) {
-        float d = norm180(w[n].twa - w[n].awa);
-        if (fabsf(d) < 8.0f) {
-            t_side = (d >= 0) ? (BADGE_R + 2) : -(BADGE_R + 2);
-            a_side = -t_side;
-        }
-    }
+    float t_side, a_side;
+    badge_sides(w[n].twa, w[n].awa, &t_side, &a_side);
     if (ok(w[n].twa)) draw_pointer(ctx, w[n].twa, COL_TRUE, "T", t_side);
     if (ok(w[n].awa)) draw_pointer(ctx, w[n].awa, COL_APPARENT, "A", a_side);   // apparent on top
+}
+
+// ─── Redrawing only where the pointers are ──────────────────────────────────
+// Redrawing the whole dial for every pointer move took ~150 ms, so pointers
+// could only move ~6 times a second. Instead, redraw the box around each
+// pointer / the arrow where it was and where it is now.
+static void grow(lv_area_t& a, lv_point_t p) {
+    if (p.x < a.x1) a.x1 = p.x; if (p.x > a.x2) a.x2 = p.x;
+    if (p.y < a.y1) a.y1 = p.y; if (p.y > a.y2) a.y2 = p.y;
+}
+static void pad(lv_area_t& a, int m) { a.x1 -= m; a.y1 -= m; a.x2 += m; a.y2 += m; }
+
+static lv_area_t pointer_area(float deg, float badge_side) {
+    lv_point_t c = polar_side(deg, R_BADGE, badge_side);
+    lv_area_t a = { c.x, c.y, c.x, c.y };
+    pad(a, BADGE_R + 1);
+    grow(a, polar(deg, R_PTR_TAIL));
+    grow(a, polar(deg, R_PTR_TIP));
+    grow(a, polar_side(deg, R_PTR_BASE - 2, R_PTR_HEAD));
+    grow(a, polar_side(deg, R_PTR_BASE - 2, -R_PTR_HEAD));
+    pad(a, R_PTR_W / 2 + 3);
+    return a;
+}
+
+static lv_area_t drift_area(float rel) {
+    lv_point_t p = polar(rel, R_DRIFT_OUT);
+    lv_area_t a = { p.x, p.y, p.x, p.y };
+    const float r_head = R_DRIFT_OUT - 18;
+    grow(a, polar_side(rel, R_DRIFT_IN, -11)); grow(a, polar_side(rel, R_DRIFT_IN, 11));
+    grow(a, polar_side(rel, r_head, 21));      grow(a, polar_side(rel, r_head, -21));
+    pad(a, 3);
+    return a;
+}
+
+// Mark everything drawn for this state as needing a redraw
+static void invalidate_dyn(WindScreen& s, float awa, float twa, float drift) {
+    float t_side, a_side;
+    badge_sides(twa, awa, &t_side, &a_side);
+    lv_area_t a;
+    if (ok(awa))   { a = pointer_area(awa, a_side); lv_obj_invalidate_area(s.dyn, &a); }
+    if (ok(twa))   { a = pointer_area(twa, t_side); lv_obj_invalidate_area(s.dyn, &a); }
+    if (ok(drift)) { a = drift_area(drift);         lv_obj_invalidate_area(s.dyn, &a); }
+}
+
+// ─── Gliding ────────────────────────────────────────────────────────────────
+// Pointers glide to each new reading (about 95% of the way in a quarter of a
+// second) instead of jumping, the way gauge needles animate.
+#define GLIDE_TAU_MS   70.0f
+#define GLIDE_STEP_DEG  0.5f   // redraw once a pointer has moved this far
+
+static float glide_to(float cur, float tgt, float k) {
+    if (!ok(tgt)) return NAN;
+    if (!ok(cur)) return tgt;                 // appearing: no glide in from nowhere
+    float d = norm180(tgt - cur);             // short way round
+    if (fabsf(d) < 0.2f) return tgt;
+    return norm180(cur + d * k);
+}
+
+static bool needs_redraw(float drawn, float cur, float tgt) {
+    if (ok(drawn) != ok(cur)) return true;
+    if (!ok(cur)) return false;
+    float d = fabsf(norm180(cur - drawn));
+    return d >= GLIDE_STEP_DEG || (cur == tgt && d > 0.0f);   // land exactly on the reading
+}
+
+static void glide_cb(lv_timer_t* t) {
+    int n = (int)(intptr_t)t->user_data;
+    if (n < 0 || n >= NUM_SCREENS) return;
+    WindScreen& s = w[n];
+    if (!s.dyn) return;
+    uint32_t dt = lv_tick_elaps(s.glide_last);
+    s.glide_last = lv_tick_get();
+    float k = 1.0f - expf(-(float)dt / GLIDE_TAU_MS);
+    s.awa_cur   = glide_to(s.awa_cur,   s.awa_tgt,   k);
+    s.twa_cur   = glide_to(s.twa_cur,   s.twa_tgt,   k);
+    s.drift_cur = glide_to(s.drift_cur, s.drift_tgt, k);
+    if (needs_redraw(s.awa, s.awa_cur, s.awa_tgt) || needs_redraw(s.twa, s.twa_cur, s.twa_tgt) ||
+        needs_redraw(s.drift_rel, s.drift_cur, s.drift_tgt)) {
+        invalidate_dyn(s, s.awa, s.twa, s.drift_rel);           // where they were
+        s.awa = s.awa_cur; s.twa = s.twa_cur; s.drift_rel = s.drift_cur;
+        invalidate_dyn(s, s.awa, s.twa, s.drift_rel);           // where they are now
+    }
 }
 
 // ─── Create / destroy ───────────────────────────────────────────────────────
@@ -407,12 +500,17 @@ void wind_display_create(int n) {
     }
 
     s.awa = s.twa = s.drift_rel = NAN;
+    s.awa_cur = s.twa_cur = s.drift_cur = NAN;
+    s.awa_tgt = s.twa_tgt = s.drift_tgt = NAN;
+    s.glide_last = lv_tick_get();
+    s.glide = lv_timer_create(glide_cb, 15, (void*)(intptr_t)n);
     s.tws_ms = s.twd_deg = NAN;
     s.true_calc = s.twd_mag = s.twd_calc = 0;
 }
 
 void wind_display_destroy(int n) {
     if (n < 0 || n >= NUM_SCREENS) return;
+    if (w[n].glide) lv_timer_del(w[n].glide);
     if (w[n].bg) lv_obj_del(w[n].bg);
     memset(&w[n], 0, sizeof(w[n]));
 }
@@ -529,17 +627,8 @@ void wind_display_update(int n, const WindInputs* in) {
     s.tws_ms = tws; s.true_calc = true_calc;
     s.twd_deg = twd; s.twd_mag = twd_mag; s.twd_calc = twd_calc;
 
-    // ── Redraw pointers / arrow only when they move by a degree or more ──
-    auto moved = [](float a, float b) {
-        if (isnan(a) != isnan(b)) return true;
-        if (isnan(a)) return false;
-        return fabsf(norm180(a - b)) >= 1.0f;
-    };
-    if (moved(s.awa, awa) || moved(s.twa, twa) || moved(s.drift_rel, drift_rel)) {
-        s.awa = awa; s.twa = twa; s.drift_rel = drift_rel;
-        lv_area_t a = { CX - R_BAND_OUT, CY - R_BAND_OUT, CX + R_BAND_OUT, CY + R_BAND_OUT };
-        lv_obj_invalidate_area(s.dyn, &a);
-    }
+    // Pointers / arrow glide to the new reading (glide_cb redraws them)
+    s.awa_tgt = awa; s.twa_tgt = twa; s.drift_tgt = drift_rel;
 }
 
 void wind_display_update_field(int n, int side, int use_default,

@@ -1,3 +1,4 @@
+#include "psram_alloc.h"
 #include "dual_number_display.h"
 #include "screen_config_c_api.h"
 #include "unit_convert.h"
@@ -30,15 +31,15 @@ static lv_obj_t* get_screen_obj(int screen_num) {
 }
 
 // Previous values for change detection
-// EXT_RAM_ATTR → PSRAM, freeing ~2.2 KB of internal RAM
-EXT_RAM_ATTR static char prev_dual_top_text[NUM_SCREENS][64];
+// In PSRAM (see psram_alloc.h), freeing ~2.2 KB of internal RAM
+static char (*prev_dual_top_text)[64] = psram_array<char[64]>(NUM_SCREENS);
 // Font chosen in settings for each half ([0] top, [1] bottom)
 static const lv_font_t* dual_cfg_font[NUM_SCREENS][2] = {{NULL}};
-EXT_RAM_ATTR static char prev_dual_top_unit[NUM_SCREENS][32];
-EXT_RAM_ATTR static char prev_dual_top_description[NUM_SCREENS][128];
-EXT_RAM_ATTR static char prev_dual_bottom_text[NUM_SCREENS][64];
-EXT_RAM_ATTR static char prev_dual_bottom_unit[NUM_SCREENS][32];
-EXT_RAM_ATTR static char prev_dual_bottom_description[NUM_SCREENS][128];
+static char (*prev_dual_top_unit)[32] = psram_array<char[32]>(NUM_SCREENS);
+static char (*prev_dual_top_description)[128] = psram_array<char[128]>(NUM_SCREENS);
+static char (*prev_dual_bottom_text)[64] = psram_array<char[64]>(NUM_SCREENS);
+static char (*prev_dual_bottom_unit)[32] = psram_array<char[32]>(NUM_SCREENS);
+static char (*prev_dual_bottom_description)[128] = psram_array<char[128]>(NUM_SCREENS);
 
 // Font size to LVGL font mapping - all native sizes, no scaling
 static const lv_font_t* get_font_for_size(uint8_t size) {

@@ -1,3 +1,4 @@
+#include "psram_alloc.h"
 #include "rgb565_decoder.h"
 #include "lvgl.h"
 #include <string.h>
@@ -23,7 +24,7 @@ struct ImgCacheEntry {
     size_t       size;
 };
 
-static ImgCacheEntry s_img_cache[IMG_CACHE_MAX];
+static ImgCacheEntry* s_img_cache = psram_array<ImgCacheEntry>(IMG_CACHE_MAX);  // PSRAM, see psram_alloc.h
 static int           s_img_cache_cnt = 0;
 
 static const uint8_t* cache_find(const char* path) {

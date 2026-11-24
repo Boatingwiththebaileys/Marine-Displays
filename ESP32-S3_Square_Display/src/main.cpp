@@ -1,3 +1,4 @@
+#include "psram_alloc.h"
 #include <Preferences.h>
 #include "tap_reset.h"
 #include "power_key.h"
@@ -1110,6 +1111,11 @@ void setup() {
     ets_printf("*** Serial.begin done ***\r\n");
     Serial.println("\n\n=== ESP32 Square Display Starting ===");
     Serial.printf("Firmware version: %s\n", FW_VERSION);
+    // Where the big tables went (should be PSRAM) and internal RAM at start-up
+    psram_report("screen_configs", screen_configs, NUM_SCREENS * sizeof(ScreenConfig));
+    Serial.printf("[MEM] boot: iRAM free=%u largest=%u\n",
+                  heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+                  heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
     Serial.flush();
     
     // I2C and IO expander already initialized above; re-assert safe state after delay
@@ -1313,7 +1319,13 @@ void setup() {
 }
 
 void loop() {
-    config_server.handleClient();
+    {   // Log any web request that holds up the display for over a second
+        uint32_t t0 = millis();
+        config_server.handleClient();
+        uint32_t d = millis() - t0;
+        if (d > 1000) Serial.printf("[WEB] slow request: %u ms, %s %s\n", (unsigned)d,
+                                    config_server.method() == HTTP_POST ? "POST" : "GET", config_server.uri().c_str());
+    }
 
     // --- Screen-off timeout ---------------------------------------------------
     // g_last_activity_ms is updated on every touch in Lvgl_Touchpad_Read().
