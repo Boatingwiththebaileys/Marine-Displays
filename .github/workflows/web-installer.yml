@@ -142,8 +142,8 @@ jobs:
           fi
           find docs -name '*.bin' | sort
           cat docs/manifest-square.json
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: docs
       - id: deploy
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
