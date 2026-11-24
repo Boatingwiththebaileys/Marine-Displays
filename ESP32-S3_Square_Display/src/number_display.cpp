@@ -189,6 +189,8 @@ void number_display_update(int screen_num, float value, const char* unit, const 
     char buf[32];
     if (isnan(value)) {
         strcpy(buf, "--");          // no data
+    } else if (format_if_percent(buf, sizeof(buf), value, unit)) {
+        // whole percent
     } else {
         if (value >= 1000.0f || value <= -1000.0f) {
             snprintf(buf, sizeof(buf), "%.0f", value);  // No decimals for large numbers

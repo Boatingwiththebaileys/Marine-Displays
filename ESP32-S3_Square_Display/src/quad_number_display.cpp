@@ -344,6 +344,7 @@ static void quad_apply(int screen_num, int q, const char* text, bool is_text,
 static void quad_update_number(int screen_num, int q, float value, const char* unit, const char* description) {
     char value_text[64];
     if (isnan(value)) strcpy(value_text, "--");     // no data
+    else if (format_if_percent(value_text, sizeof(value_text), value, unit)) {}
     else              snprintf(value_text, sizeof(value_text), "%.1f", value);
     quad_apply(screen_num, q, value_text, false, unit, description);
 }

@@ -193,6 +193,7 @@ static void gauge_num_apply(int screen_num, const char* text, bool is_text, cons
 void gauge_number_display_update_center(int screen_num, float value, const char* unit, const char* description) {
     char text[64];
     if (isnan(value)) strcpy(text, "--");     // no data
+    else if (format_if_percent(text, sizeof(text), value, unit)) {}
     else              snprintf(text, sizeof(text), "%.1f", value);
     gauge_num_apply(screen_num, text, false, unit, description);
 }

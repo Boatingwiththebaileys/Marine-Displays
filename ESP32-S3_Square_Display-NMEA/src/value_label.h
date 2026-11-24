@@ -9,6 +9,7 @@
 #include "lvgl.h"
 #include "ui.h"
 #include <string.h>
+#include <stdio.h>
 
 // Largest first. The configured font is always one of these.
 static const lv_font_t* const VALUE_FONT_LADDER[] = {
@@ -65,4 +66,11 @@ static inline const lv_font_t* set_value_label(lv_obj_t* lbl, const char* txt, b
         lv_label_set_text(lbl, txt);
     }
     return f;
+}
+
+// Percentages show as whole numbers ("56 %"), whatever the field or label.
+static inline bool format_if_percent(char* buf, size_t n, float value, const char* unit) {
+    if (!unit || strcmp(unit, "%") != 0) return false;
+    snprintf(buf, n, "%.0f", value);
+    return true;
 }

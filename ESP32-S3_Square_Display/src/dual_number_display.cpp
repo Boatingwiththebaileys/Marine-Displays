@@ -226,6 +226,7 @@ static void dual_apply(int screen_num, int half, const char* text, bool is_text,
 static void dual_update_number(int screen_num, int half, float value, const char* unit, const char* description) {
     char text[64];
     if (isnan(value)) strcpy(text, "--");     // no data
+    else if (format_if_percent(text, sizeof(text), value, unit)) {}
     else              snprintf(text, sizeof(text), "%.1f", value);
     dual_apply(screen_num, half, text, false, unit, description);
 }
