@@ -96,9 +96,6 @@ jobs:
   publish:
     if: github.ref_type != 'tag'
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
     env:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
@@ -145,5 +142,16 @@ jobs:
       - uses: actions/upload-pages-artifact@v5
         with:
           path: docs
+
+  # Deploy in its own job, as in GitHub's Pages template. Deploying in the same
+  # job straight after the upload started failing with "No artifacts named
+  # github-pages were found": the artifact exists but isn't listed yet.
+  deploy:
+    needs: publish
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
       - id: deploy
         uses: actions/deploy-pages@v5
