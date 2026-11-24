@@ -248,8 +248,10 @@
         <li>Pressures are <b>Pascals</b>: 4 bar = <code>400000</code></li>
         <li>Tank levels are <b>0 to 1</b>: half full = <code>0.5</code></li>
         <li>Speeds are <b>metres per second</b>: 10 knots ≈ <code>5.14</code></li>
+        <li>Wind angles are <b>radians</b>, from −3.14 to 3.14, negative to port. For a wind gauge use the values <code>-3.1416</code>, <code>-1.5708</code>, <code>0</code>, <code>1.5708</code>, <code>3.1416</code> with the angles −180, −90, 0, 90, 180.</li>
       </ul>
-      <p style="margin:8px 0 0">The NMEA 2000 display uses the same units. (Before version 1.1.1 it used plain RPM and 0–100 for tank levels, so gauges set up then need their values changing: divide RPM by 60 and tank levels by 100.) Single, Dual and Quad Value displays convert values for you automatically.</p></div>
+      <p style="margin:8px 0 0"><b>Wind angles on the NMEA 2000 display</b> are <b>degrees from 0 to 360</b>, clockwise from the bow, so 50° to port is <code>310</code>. For a wind gauge use the values <code>0</code>, <code>90</code>, <code>180</code>, <code>270</code>, <code>360</code> with the same numbers as the angles. When the wind crosses the bow the needle swings the long way round before settling.</p>
+      <p style="margin:8px 0 0">Otherwise the NMEA 2000 display uses the same units. (Before version 1.1.1 it used plain RPM and 0–100 for tank levels, so gauges set up then need their values changing: divide RPM by 60 and tank levels by 100.) Single, Dual and Quad Value displays convert values for you automatically.</p></div>
     <h3>Zones and alerts</h3>
     <p>Each gauge has up to 4 <b>zones</b>, each a <b>Min</b>–<b>Max</b> range with a <b>Color</b>. When the value is in a zone, the gauge's icon turns that colour (tick <b>Transparent</b> to show the icon in its own colours instead). Tick <b>Buzzer</b> on a zone to sound the buzzer while the value is in it. A typical coolant gauge has a normal zone, a warm zone in amber, and an overheat zone in red with the buzzer on.</p>
     <div class="tip"><b>Tip: overlapping zones</b>If zones overlap, the <b>narrowest</b> one wins. So you can set a wide "normal" zone across the whole scale, then a narrow red zone at the top for the alarm, without worrying about exact boundaries.</div>
